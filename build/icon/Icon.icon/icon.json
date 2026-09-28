@@ -1,0 +1,108 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "linear-gradient": [
+          "srgb:0.30980,0.27451,1.00000,1.00000",
+          "srgb:1.00000,0.43529,0.70980,1.00000"
+        ]
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "linear-gradient": [
+          "srgb:0.11765,0.10588,0.29412,1.00000",
+          "srgb:0.35686,0.11373,0.30980,1.00000"
+        ]
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "face",
+      "layers": [
+        {
+          "name": "face",
+          "image-name": "face.svg",
+          "glass": false,
+          "hidden": false,
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "shadow": {
+        "kind": "none",
+        "opacity": 0.5
+      },
+      "specular": false,
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    },
+    {
+      "name": "body",
+      "layers": [
+        {
+          "name": "body",
+          "image-name": "body.svg",
+          "glass": true,
+          "hidden": false,
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "lighting": "individual",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.25
+      }
+    },
+    {
+      "name": "antenna",
+      "layers": [
+        {
+          "name": "antenna",
+          "image-name": "antenna.svg",
+          "glass": true,
+          "hidden": false,
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.5
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.4
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

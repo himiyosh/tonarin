@@ -1,0 +1,59 @@
+{
+  "name": "tonarin",
+  "productName": "Tonarin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A voice desk companion for macOS: talk in real time with Gemini Live, with GitHub Copilot as the brain for deep dives",
+  "license": "MIT",
+  "author": "himiyosh",
+  "homepage": "https://github.com/himiyosh/tonarin#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/himiyosh/tonarin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/himiyosh/tonarin/issues"
+  },
+  "main": "pet/main.cjs",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "tonarin": {
+    "githubClientId": "Ov23li5lULbN4qWgygEM"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env --import tsx src/server.ts",
+    "pet": "electron pet/main.cjs",
+    "pet:bundled": "npm run build:proxy && PET_BUNDLED_PROXY=1 electron pet/main.cjs",
+    "launcher": "sh scripts/make-launcher.sh",
+    "build:proxy": "node scripts/build-proxy.mjs",
+    "dist": "node scripts/dist.mjs",
+    "dist:dir": "npm run build:proxy && electron-builder --mac --dir --config electron-builder.config.cjs",
+    "live:check": "node --env-file-if-exists=.env scripts/live-check.mjs",
+    "models": "tsx src/list-models.ts",
+    "bench": "node --env-file-if-exists=.env --import tsx src/bench-latency.ts",
+    "typecheck": "tsc --noEmit",
+    "icon": "node scripts/build-icon.mjs",
+    "test": "node --test tests/*.test.cjs tests/*.test.mjs",
+    "hooks": "git config core.hooksPath .githooks"
+  },
+  "dependencies": {
+    "@github/copilot-sdk": "^1.0.14",
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@mozilla/readability": "^0.6.0",
+    "linkedom": "^0.18.12",
+    "rss-parser": "^3.13.0",
+    "ws": "^8.21.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "@types/ws": "^8.18.1",
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.0",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="190" height="190" aria-hidden="true">
+  <!-- ペンギン: a penguin in a knit hat. The pom-pom is the status light. -->
+  <defs>
+    <radialGradient id="pengin-body" cx="40%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#4a5a82" />
+      <stop offset="100%" stop-color="#232c45" />
+    </radialGradient>
+    <radialGradient id="pengin-glow" cx="50%" cy="50%" r="50%">
+      <stop class="glow-core" offset="0%" />
+      <stop class="glow-edge" offset="100%" />
+    </radialGradient>
+  </defs>
+
+  <ellipse class="shadow" cx="100" cy="185" rx="44" ry="6.5" fill="#1a2238" fill-opacity="0.18" />
+
+  <g class="float">
+    <path d="M44 116 C 28 130, 28 152, 40 162 C 44 146, 48 132, 44 116 Z" fill="#232c45" />
+    <path d="M156 116 C 172 130, 172 152, 160 162 C 156 146, 152 132, 156 116 Z" fill="#232c45" />
+    <path d="M100 58 C 140 58, 160 92, 160 128 C 160 160, 136 178, 100 178 C 64 178, 40 160, 40 128 C 40 92, 60 58, 100 58 Z"
+      fill="url(#pengin-body)" stroke="#1c2338" stroke-width="2" />
+    <ellipse cx="100" cy="142" rx="40" ry="34" fill="#fbfcff" />
+    <circle cx="85" cy="106" r="21" fill="#fbfcff" />
+    <circle cx="115" cy="106" r="21" fill="#fbfcff" />
+    <ellipse cx="87" cy="179" rx="11" ry="4.5" fill="#f5a445" />
+    <ellipse cx="113" cy="179" rx="11" ry="4.5" fill="#f5a445" />
+
+    <!-- knit hat -->
+    <path d="M58 80 C 58 52, 142 52, 142 80 Z" fill="#e25563" />
+    <g fill="none" stroke="#f07b87" stroke-width="2" stroke-linecap="round">
+      <path d="M80 65 L78 76" />
+      <path d="M100 62 L100 76" />
+      <path d="M120 65 L122 76" />
+    </g>
+    <rect x="55" y="74" width="90" height="13" rx="6.5" fill="#c73f4e" />
+    <circle class="bulb-halo" cx="100" cy="51" r="18" fill="url(#pengin-glow)" />
+    <circle class="bulb" cx="100" cy="51" r="9" stroke="#ffffff" stroke-width="2" />
+    <g class="listen-rings">
+      <circle cx="100" cy="51" r="13" />
+      <circle cx="100" cy="51" r="13" />
+    </g>
+
+    <ellipse cx="72" cy="120" rx="8" ry="5" fill="#ffadc0" fill-opacity="0.6" />
+    <ellipse cx="128" cy="120" rx="8" ry="5" fill="#ffadc0" fill-opacity="0.6" />
+
+    <g class="eyes">
+      <g class="eye">
+        <ellipse cx="86" cy="106" rx="6.5" ry="8.5" fill="#1f2436" />
+        <circle cx="88.5" cy="102.5" r="2.4" fill="#ffffff" />
+      </g>
+      <g class="eye">
+        <ellipse cx="114" cy="106" rx="6.5" ry="8.5" fill="#1f2436" />
+        <circle cx="116.5" cy="102.5" r="2.4" fill="#ffffff" />
+      </g>
+    </g>
+    <g class="sleepy-eyes" fill="none" stroke="#1f2436" stroke-width="3" stroke-linecap="round">
+      <path d="M79 107 Q86 112 93 107" />
+      <path d="M107 107 Q114 112 121 107" />
+    </g>
+
+    <ellipse id="mouth" cx="100" cy="122" rx="3.5" ry="0.8" fill="#8a3b1a" data-open-rx="2" data-open-ry="5" />
+    <path d="M93 115 L107 115 L100 123 Z" fill="#f5a445" stroke="#dc8a2c" stroke-width="1.2" stroke-linejoin="round" />
+
+    <g class="thinking-dots" fill="#ffffff" stroke="#4a5a82" stroke-width="1.5">
+      <circle cx="150" cy="52" r="4" />
+      <circle cx="162" cy="40" r="5" />
+      <circle cx="175" cy="27" r="6" />
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,8 @@
+/* The macOS microphone prompt, in English. */
+"NSMicrophoneUsageDescription" = "Your pet listens through the microphone so you can talk with it. The mic is closed while it naps or is muted. Audio goes to Gemini Live and is not stored by the app.";
+
+/* Calendar and reminders prompts: only when a calendar app is connected in Settings > Connected apps. */
+"NSCalendarsUsageDescription" = "Lets the calendar app you connected in Settings read your events so your pet can tell you about them.";
+"NSCalendarsFullAccessUsageDescription" = "Lets the calendar app you connected in Settings read your events so your pet can tell you about them.";
+"NSRemindersUsageDescription" = "Lets the calendar app you connected in Settings read your reminders.";
+"NSRemindersFullAccessUsageDescription" = "Lets the calendar app you connected in Settings read your reminders.";

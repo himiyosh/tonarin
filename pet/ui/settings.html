@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:"
+    />
+    <title>Settings</title>
+    <link rel="stylesheet" href="settings.css" />
+    <script type="module" src="settings.js"></script>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <img src="app-icon.png" alt="" width="36" height="36" />
+          <div>
+            <strong>Tonarin</strong>
+            <small data-i18n="settings.subtitle"></small>
+          </div>
+        </div>
+        <nav id="nav" aria-label="Settings"></nav>
+      </aside>
+      <main id="content" class="content"></main>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ja" data-state="connecting" data-muted="false">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' ws://127.0.0.1:*; img-src 'self' data:"
+    />
+    <title>Desktop Pet</title>
+    <link rel="stylesheet" href="pet.css" />
+    <script type="module" src="renderer.js"></script>
+  </head>
+  <body>
+    <div id="bubble" class="bubble" hidden>
+      <div id="bubble-scroll" class="bubble-scroll">
+        <p id="bubble-you" class="you" hidden><span class="who" data-i18n="pet.you">あなた</span><span id="bubble-you-text"></span></p>
+        <p id="bubble-text"></p>
+        <!-- English practice: a better way to say what you just said (shown, not spoken) -->
+        <div id="bubble-card" class="card" hidden>
+          <div class="card-head"><span aria-hidden="true">💡</span> <span data-i18n="pet.betterWay">言い直すなら</span></div>
+          <div id="card-original" class="card-original"></div>
+          <div id="card-better" class="card-better"></div>
+          <div id="card-note" class="card-note"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="pet" class="pet" aria-label="デスクトップペット">
+      <!-- The character SVG (characters/<id>.svg) is loaded here by renderer.js. -->
+      <div id="character" class="character"></div>
+
+      <svg class="badge-muted" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="14.5" fill="#ffffff" stroke="#d25a5a" stroke-width="2" />
+        <rect x="12" y="6.5" width="8" height="13" rx="4" fill="#8c8aa6" />
+        <path d="M8.5 15 Q8.5 23.5 16 23.5 Q23.5 23.5 23.5 15 M16 23.5 L16 27" fill="none" stroke="#8c8aa6" stroke-width="2" stroke-linecap="round" />
+        <line x1="6" y1="6" x2="26" y2="26" stroke="#d25a5a" stroke-width="3" stroke-linecap="round" />
+      </svg>
+
+      <div class="zzz" aria-hidden="true"><span>z</span><span>z</span><span>Z</span></div>
+    </div>
+
+    <!-- Size slider: stays put at the bottom of the window while the pet grows or shrinks behind it. -->
+    <div id="size-panel" class="size-panel" hidden>
+      <span class="size-label" data-i18n="size.small">小</span>
+      <input id="size-slider" type="range" min="50" max="200" step="5" value="100" aria-label="ペットの大きさ" data-i18n-aria="size.aria" />
+      <span class="size-label" data-i18n="size.large">大</span>
+      <output id="size-value" for="size-slider">100%</output>
+      <button id="size-done" type="button" data-i18n="size.done">完了</button>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+#!/bin/sh
+# Refuse direct pushes to main: changes reach main through a pull request from develop.
+# Enable once per clone with: npm run hooks   (sets core.hooksPath to .githooks)
+# GitHub enforces the same rule on the server; this hook only saves you the round trip.
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    echo "pre-push: pushing to main directly is not allowed. Push a branch and open a pull request into develop." >&2
+    exit 1
+  fi
+done
+exit 0

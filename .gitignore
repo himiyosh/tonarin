@@ -1,0 +1,96 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Secrets and credentials: never commit these
+# ─────────────────────────────────────────────────────────────────────────────
+# Environment files (PROXY_API_KEY, GEMINI_API_KEY, tokens). Only the template is tracked.
+.env
+.env.*
+!.env.example
+# npm config can hold registry auth tokens (company feeds, publish tokens)
+.npmrc
+.yarnrc*
+# Keys, certificates, signing identities, provisioning profiles
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+*.cer
+*.crt
+*.der
+*.keychain
+*.keychain-db
+*.mobileprovision
+*.provisionprofile
+# Apple notarization / signing credentials kept as files
+notarize*.json
+apple-*.json
+# Tonarin's own runtime data (lives in ~/Library/Application Support/Tonarin, never in the repo)
+secrets.json
+settings.json
+automations.json
+reminders.json
+usage.json
+# Anything explicitly marked as private or local
+*.secret
+*.secrets
+*.private.*
+*.local.*
+.secrets/
+private/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Local notes and personal environment
+# ─────────────────────────────────────────────────────────────────────────────
+# Working notes for AI coding sessions (machine details, internal notes). Keep local.
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.local.md
+.claude/settings.local.json
+# Codex / ChatGPT pets are third-party artwork: read from ~/.codex/pets, never copied here
+.codex/
+pets/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dependencies, builds, releases
+# ─────────────────────────────────────────────────────────────────────────────
+node_modules/
+dist/
+release/
+out/
+*.tsbuildinfo
+coverage/
+# Dev launchers built by `npm run launcher` (and the pre-rename one)
+*.app/
+# Whisper models (hundreds of MB) and other downloaded models
+models/
+*.bin
+*.gguf
+*.onnx
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Logs, recordings, temp, sandboxes
+# ─────────────────────────────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+# Audio or transcripts captured while debugging must never be committed
+*.wav
+*.pcm
+*.m4a
+transcripts/
+sandbox/
+tmp/
+*.tmp
+.backup-*/
+.expected.md5
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OS and editors
+# ─────────────────────────────────────────────────────────────────────────────
+.DS_Store
+._*
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp

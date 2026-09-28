@@ -1,0 +1,28 @@
+# Normalize text to LF everywhere
+* text=auto eol=lf
+
+*.js    text eol=lf
+*.cjs   text eol=lf
+*.mjs   text eol=lf
+*.ts    text eol=lf
+*.json  text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.sh    text eol=lf
+*.py    text eol=lf
+*.svg   text eol=lf
+*.plist text eol=lf
+*.strings text eol=lf
+
+# Binary assets
+*.png  binary
+*.webp binary
+*.car  binary
+*.icns binary
+*.gif  binary
+
+# Generated lockfile: collapse in diffs
+package-lock.json linguist-generated=true -diff

@@ -1,0 +1,285 @@
+/*
+ * Shared look for every character. Colors of the character itself live in its SVG (characters/*.svg);
+ * this file only drives the status light, animations and state changes through the class API:
+ * .shadow .float .bulb .bulb-halo(.glow-core/.glow-edge) .listen-rings .eyes/.eye .sleepy-eyes #mouth .thinking-dots
+ */
+:root {
+  --bulb: #8fd6c8;
+  color-scheme: light;
+}
+:root[data-state="listening"] { --bulb: #6fdc8c; }
+:root[data-state="thinking"] { --bulb: #ffc05c; }
+:root[data-state="speaking"] { --bulb: #ff93bd; }
+:root[data-state="connecting"] { --bulb: #c4c4cc; }
+:root[data-state="error"] { --bulb: #ff6b6b; }
+:root[data-state="sleeping"] { --bulb: #9aa3c7; }
+:root[data-muted="true"]:not([data-state="sleeping"]) { --bulb: #b9b6c9; }
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif;
+}
+body {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end; /* bubble above: the pet sits at the bottom of the window, the window grows upward */
+}
+/* Bubble below (the pet is near the top of the screen): the pet sits at the top, the window grows downward. */
+:root[data-bubble="below"] body {
+  flex-direction: column-reverse;
+  padding-top: var(--pet-top, 12px);
+}
+
+/* --- speech bubble ----------------------------------------------------------- */
+.bubble {
+  --bubble-bg: rgba(255, 255, 255, 0.96);
+  position: relative;
+  flex-shrink: 0;
+  max-width: 300px;
+  margin: 0 12px 6px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--bubble-bg);
+  /* moved toward the pet when it sits off-center (near the left or right edge of the screen) */
+  transform: translateX(var(--bubble-shift, 0px));
+  color: #2b2b3a;
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow: 0 4px 14px rgba(40, 30, 90, 0.18);
+  transition: opacity 0.4s ease;
+}
+.bubble[hidden] { display: block; opacity: 0; pointer-events: none; }
+.bubble-scroll {
+  /* 10 lines; longer exchanges scroll (the newest line stays in view). Less when the screen has less room. */
+  max-height: min(15em, calc(var(--bubble-room, 420px) - 50px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.bubble p { margin: 0; word-break: break-word; }
+.bubble p[hidden] { display: none; }
+/* What you said, above the pet's reply */
+.bubble .you {
+  margin-bottom: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: #eef1f8;
+  color: #4d5270;
+  font-size: 12px;
+}
+.bubble .you:last-child { margin-bottom: 0; }
+.bubble .who {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: #d9deef;
+  color: #454b6b;
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+.bubble::after {
+  content: "";
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  margin-left: calc(-7px + var(--tail-shift, 0px)); /* points at the pet when the bubble is not centered on it */
+  border: 7px solid transparent;
+  border-bottom: 0;
+  border-top-color: var(--bubble-bg);
+}
+:root[data-bubble="below"] .bubble { margin: 6px 12px 0; }
+:root[data-bubble="below"] .bubble::after {
+  top: -7px;
+  bottom: auto;
+  border: 7px solid transparent;
+  border-top: 0;
+  border-bottom-color: var(--bubble-bg);
+}
+.bubble.error { --bubble-bg: #fff1f1; color: #8a1f1f; }
+.bubble.hint { color: #5b5680; }
+.bubble.reminder { --bubble-bg: #fff8e6; color: #5a4300; font-weight: 600; }
+/* English practice correction card */
+.bubble .card {
+  margin-top: 8px;
+  padding: 6px 9px;
+  border-radius: 9px;
+  background: #f0edff;
+  color: #3a3466;
+  font-size: 12px;
+}
+.bubble .card[hidden] { display: none; }
+.bubble .card-head { font-size: 10.5px; font-weight: 700; color: #6a5fc4; margin-bottom: 2px; }
+.bubble .card-original { color: #8a86a3; text-decoration: line-through; text-decoration-color: rgba(138, 134, 163, 0.7); }
+.bubble .card-better { font-weight: 700; }
+.bubble .card-note { margin-top: 2px; color: #5b5680; font-size: 11px; }
+.bubble .card-note:empty { display: none; }
+
+/* --- the pet ----------------------------------------------------------------- */
+.pet {
+  position: relative;
+  flex-shrink: 0;
+
+  width: 190px;
+  height: 190px;
+  cursor: grab;
+  touch-action: none;
+}
+.pet:active { cursor: grabbing; }
+/* Once main has placed the window, the pet sits where it says (off-center near a screen edge): placePet(). */
+:root[data-bubble] .pet { align-self: flex-start; }
+/* Held long enough: letting go opens the menu (a small press-in so you know). */
+.pet.hold-ready { cursor: context-menu; }
+.pet.hold-ready .character { transform: scale(0.94); transition: transform 0.12s ease-out; }
+.character svg { display: block; overflow: visible; }
+.character svg * { transform-box: fill-box; transform-origin: center; }
+
+.shadow { animation: shadow 3.2s ease-in-out infinite; }
+.float { animation: bob 3.2s ease-in-out infinite; }
+.bulb { fill: var(--bulb); transition: fill 0.3s; }
+.glow-core { stop-color: var(--bulb); stop-opacity: 0.85; }
+.glow-edge { stop-color: var(--bulb); stop-opacity: 0; }
+.bulb-halo { opacity: 0.7; animation: glow 2.4s ease-in-out infinite; }
+.eyes { animation: blink 5s infinite; }
+.sleepy-eyes { display: none; }
+
+.thinking-dots { display: none; }
+.thinking-dots circle { animation: dot 1.2s ease-in-out infinite; }
+.thinking-dots circle:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dots circle:nth-child(3) { animation-delay: 0.4s; }
+
+.listen-rings { display: none; }
+.listen-rings circle { fill: none; stroke: var(--bulb); stroke-width: 2; animation: ring 1.4s ease-out infinite; }
+.listen-rings circle:nth-child(2) { animation-delay: 0.7s; }
+
+/* Codex / ChatGPT pets (spritesheets): no built-in status light, so a small dot shows the state. */
+.sprite {
+  margin: 0 auto;
+  background-repeat: no-repeat;
+  transform-origin: 50% 100%;
+}
+/* Sprite pets have no status light of their own; the rows they play (waiting, running, failed) show the state.
+   A separate dot in the corner was removed on 2026-09-27 (it added noise). */
+:root[data-kind="sprite"][data-state="sleeping"] .sprite { filter: brightness(0.85) saturate(0.6); }
+
+.badge-muted {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 30px;
+  height: 30px;
+  display: none;
+}
+
+.zzz {
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  display: none;
+  color: #7d86b0;
+  font-weight: 700;
+  pointer-events: none;
+}
+.zzz span { position: absolute; opacity: 0; animation: zzz 3s ease-in infinite; }
+.zzz span:nth-child(1) { font-size: 12px; animation-delay: 0s; }
+.zzz span:nth-child(2) { font-size: 15px; animation-delay: 1s; }
+.zzz span:nth-child(3) { font-size: 19px; animation-delay: 2s; }
+
+/* --- size slider ----------------------------------------------------------------- */
+.size-panel {
+  position: fixed;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 4px 14px rgba(40, 30, 90, 0.22);
+  color: #3a3f55;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.size-panel[hidden] { display: none; }
+.size-panel input[type="range"] { width: 120px; margin: 0; accent-color: #8f7cf0; cursor: pointer; }
+.size-panel output { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.size-panel button {
+  border: 0;
+  border-radius: 8px;
+  padding: 3px 9px;
+  background: #8f7cf0;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* --- states -------------------------------------------------------------------- */
+:root[data-state="listening"] .listen-rings { display: inline; }
+:root[data-state="listening"] .eye { transform: scale(1.08); }
+:root[data-state="thinking"] .thinking-dots { display: inline; }
+:root[data-state="thinking"] .eyes { transform: translate(3px, -4px); animation: none; }
+:root[data-state="speaking"] .float { animation-duration: 1.6s; }
+:root[data-state="connecting"] .character,
+:root[data-state="error"] .character { filter: saturate(0.25); }
+:root[data-state="connecting"] .bulb { animation: pulse 1s ease-in-out infinite; }
+:root[data-state="error"] .eyes { transform: scaleY(0.75); }
+
+:root[data-state="sleeping"] .eyes { display: none; }
+:root[data-state="sleeping"] .sleepy-eyes { display: inline; }
+:root[data-state="sleeping"] .float,
+:root[data-state="sleeping"] .shadow { animation-duration: 6s; }
+:root[data-state="sleeping"] .bulb-halo { animation: none; opacity: 0.25; }
+:root[data-state="sleeping"] .zzz { display: block; }
+
+:root[data-muted="true"]:not([data-state="sleeping"]) .badge-muted { display: block; }
+:root[data-muted="true"] .listen-rings { display: none; }
+
+/* --- animations ---------------------------------------------------------------- */
+@keyframes bob {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  50% { transform: translateY(-5px) scale(1.01, 0.99); }
+}
+@keyframes shadow {
+  0%, 100% { transform: scaleX(1); opacity: 1; }
+  50% { transform: scaleX(0.9); opacity: 0.75; }
+}
+@keyframes blink {
+  0%, 94%, 100% { transform: scaleY(1); }
+  96% { transform: scaleY(0.1); }
+}
+@keyframes glow {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.85; }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@keyframes dot {
+  0%, 100% { transform: translateY(0); opacity: 0.5; }
+  50% { transform: translateY(-4px); opacity: 1; }
+}
+@keyframes ring {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+@keyframes zzz {
+  0% { transform: translate(0, 0); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translate(14px, -26px); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .float, .shadow, .bulb-halo, .thinking-dots circle, .listen-rings circle, .zzz span { animation: none; }
+}

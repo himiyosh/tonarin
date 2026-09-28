@@ -1,0 +1,52 @@
+{
+  "feeds": [
+    { "id": "itmedia_ai", "name": "ITmedia AI+", "language": "ja", "url": "https://rss.itmedia.co.jp/rss/2.0/aiplus.xml", "hosts": ["itmedia.co.jp"] },
+    { "id": "itmedia_news", "name": "ITmedia NEWS", "language": "ja", "url": "https://rss.itmedia.co.jp/rss/2.0/news_bursts.xml", "hosts": ["itmedia.co.jp"] },
+    { "id": "publickey", "name": "Publickey", "language": "ja", "url": "https://www.publickey1.jp/atom.xml", "hosts": ["publickey1.jp"] },
+    { "id": "gihyo", "name": "gihyo.jp", "language": "ja", "url": "https://gihyo.jp/feed/rss2", "hosts": ["gihyo.jp"] },
+    { "id": "internet_watch", "name": "INTERNET Watch", "language": "ja", "url": "https://internet.watch.impress.co.jp/data/rss/1.0/iw/feed.rdf", "hosts": ["impress.co.jp"] },
+    { "id": "gigazine", "name": "GIGAZINE", "language": "ja", "url": "https://gigazine.net/news/rss_2.0/", "hosts": ["gigazine.net"] },
+    { "id": "github_blog", "name": "GitHub Blog", "language": "en", "url": "https://github.blog/feed/", "hosts": ["github.blog"] },
+    { "id": "the_verge", "name": "The Verge", "language": "en", "url": "https://www.theverge.com/rss/index.xml", "hosts": ["theverge.com"] },
+    { "id": "ars_technica", "name": "Ars Technica", "language": "en", "url": "https://feeds.arstechnica.com/arstechnica/index", "hosts": ["arstechnica.com"] },
+    { "id": "techcrunch", "name": "TechCrunch", "language": "en", "url": "https://techcrunch.com/feed/", "hosts": ["techcrunch.com"] },
+    { "id": "engadget", "name": "Engadget", "language": "en", "url": "https://www.engadget.com/rss.xml", "hosts": ["engadget.com"] },
+    { "id": "mit_tech_review", "name": "MIT Technology Review", "language": "en", "url": "https://www.technologyreview.com/feed/", "hosts": ["technologyreview.com"] }
+  ],
+  "defaultFeeds": {
+    "ja": ["itmedia_ai", "itmedia_news", "publickey", "gihyo", "internet_watch", "gigazine", "github_blog"],
+    "en": ["github_blog", "the_verge", "ars_technica", "techcrunch", "engadget", "mit_tech_review"]
+  },
+  "voices": [
+    { "id": "Aoede", "style": { "ja": "さわやか", "en": "Breezy" } },
+    { "id": "Kore", "style": { "ja": "しっかり", "en": "Firm" } },
+    { "id": "Leda", "style": { "ja": "若々しい", "en": "Youthful" } },
+    { "id": "Zephyr", "style": { "ja": "明るい", "en": "Bright" } },
+    { "id": "Puck", "style": { "ja": "元気", "en": "Upbeat" } },
+    { "id": "Charon", "style": { "ja": "知的", "en": "Informative" } },
+    { "id": "Fenrir", "style": { "ja": "にぎやか", "en": "Excitable" } },
+    { "id": "Orus", "style": { "ja": "堅実", "en": "Firm" } },
+    { "id": "Callirrhoe", "style": { "ja": "おおらか", "en": "Easy-going" } },
+    { "id": "Autonoe", "style": { "ja": "明るい", "en": "Bright" } },
+    { "id": "Enceladus", "style": { "ja": "息づかい多め", "en": "Breathy" } },
+    { "id": "Iapetus", "style": { "ja": "はっきり", "en": "Clear" } },
+    { "id": "Umbriel", "style": { "ja": "おおらか", "en": "Easy-going" } },
+    { "id": "Algieba", "style": { "ja": "なめらか", "en": "Smooth" } },
+    { "id": "Despina", "style": { "ja": "なめらか", "en": "Smooth" } },
+    { "id": "Erinome", "style": { "ja": "はっきり", "en": "Clear" } },
+    { "id": "Algenib", "style": { "ja": "ハスキー", "en": "Gravelly" } },
+    { "id": "Rasalgethi", "style": { "ja": "知的", "en": "Informative" } },
+    { "id": "Laomedeia", "style": { "ja": "元気", "en": "Upbeat" } },
+    { "id": "Achernar", "style": { "ja": "やわらか", "en": "Soft" } },
+    { "id": "Alnilam", "style": { "ja": "しっかり", "en": "Firm" } },
+    { "id": "Schedar", "style": { "ja": "落ち着き", "en": "Even" } },
+    { "id": "Gacrux", "style": { "ja": "大人っぽい", "en": "Mature" } },
+    { "id": "Pulcherrima", "style": { "ja": "前向き", "en": "Forward" } },
+    { "id": "Achird", "style": { "ja": "親しみやすい", "en": "Friendly" } },
+    { "id": "Zubenelgenubi", "style": { "ja": "カジュアル", "en": "Casual" } },
+    { "id": "Vindemiatrix", "style": { "ja": "やさしい", "en": "Gentle" } },
+    { "id": "Sadachbia", "style": { "ja": "いきいき", "en": "Lively" } },
+    { "id": "Sadaltager", "style": { "ja": "物知り", "en": "Knowledgeable" } },
+    { "id": "Sulafat", "style": { "ja": "あたたか", "en": "Warm" } }
+  ]
+}

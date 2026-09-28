@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="190" height="190" aria-hidden="true">
+  <!-- フクロウ先生: a round owl with reading glasses. -->
+  <defs>
+    <radialGradient id="owl-body" cx="40%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#d7a676" />
+      <stop offset="100%" stop-color="#94643f" />
+    </radialGradient>
+    <radialGradient id="owl-glow" cx="50%" cy="50%" r="50%">
+      <stop class="glow-core" offset="0%" />
+      <stop class="glow-edge" offset="100%" />
+    </radialGradient>
+  </defs>
+
+  <ellipse class="shadow" cx="100" cy="185" rx="48" ry="6.5" fill="#3b2614" fill-opacity="0.18" />
+
+  <g class="float">
+    <path d="M102 56 C 100 44, 104 34, 114 29" fill="none" stroke="#7a5235" stroke-width="4" stroke-linecap="round" />
+    <circle class="bulb-halo" cx="117" cy="27" r="17" fill="url(#owl-glow)" />
+    <circle class="bulb" cx="117" cy="27" r="7" stroke="#ffffff" stroke-width="2" />
+    <g class="listen-rings">
+      <circle cx="117" cy="27" r="12" />
+      <circle cx="117" cy="27" r="12" />
+    </g>
+
+    <!-- ear tufts, wings, body -->
+    <path d="M50 76 L56 44 L80 64 Z" fill="#8a5c3a" stroke="#6e4a2e" stroke-width="2" stroke-linejoin="round" />
+    <path d="M150 76 L144 44 L120 64 Z" fill="#8a5c3a" stroke="#6e4a2e" stroke-width="2" stroke-linejoin="round" />
+    <path d="M100 54 C 144 54, 166 90, 164 128 C 162 162, 136 178, 100 178 C 64 178, 38 162, 36 128 C 34 90, 56 54, 100 54 Z"
+      fill="url(#owl-body)" stroke="#6e4a2e" stroke-width="2" />
+    <path d="M42 112 C 28 130, 32 158, 54 168 C 50 148, 50 130, 42 112 Z" fill="#7d5334" />
+    <path d="M158 112 C 172 130, 168 158, 146 168 C 150 148, 150 130, 158 112 Z" fill="#7d5334" />
+    <ellipse cx="100" cy="146" rx="38" ry="28" fill="#f3e2c7" />
+    <g fill="none" stroke="#d9bf98" stroke-width="1.6" stroke-linecap="round">
+      <path d="M78 136 q5 5 10 0 q5 5 10 0 q5 5 10 0 q5 5 10 0" />
+      <path d="M83 148 q5 5 10 0 q5 5 10 0 q5 5 10 0" />
+      <path d="M88 160 q6 5 12 0 q6 5 12 0" />
+    </g>
+    <ellipse cx="86" cy="178" rx="9" ry="4" fill="#f2a33c" />
+    <ellipse cx="114" cy="178" rx="9" ry="4" fill="#f2a33c" />
+
+    <!-- face -->
+    <circle cx="78" cy="100" r="21" fill="#f8eedd" stroke="#d9bf98" stroke-width="1.5" />
+    <circle cx="122" cy="100" r="21" fill="#f8eedd" stroke="#d9bf98" stroke-width="1.5" />
+    <ellipse cx="60" cy="124" rx="8" ry="5" fill="#ff9fb3" fill-opacity="0.45" />
+    <ellipse cx="140" cy="124" rx="8" ry="5" fill="#ff9fb3" fill-opacity="0.45" />
+
+    <g class="eyes">
+      <g class="eye">
+        <ellipse cx="78" cy="101" rx="8" ry="9.5" fill="#2b2118" />
+        <circle cx="81" cy="97" r="2.8" fill="#ffffff" />
+      </g>
+      <g class="eye">
+        <ellipse cx="122" cy="101" rx="8" ry="9.5" fill="#2b2118" />
+        <circle cx="125" cy="97" r="2.8" fill="#ffffff" />
+      </g>
+    </g>
+    <g class="sleepy-eyes" fill="none" stroke="#2b2118" stroke-width="3.5" stroke-linecap="round">
+      <path d="M70 102 Q78 108 86 102" />
+      <path d="M114 102 Q122 108 130 102" />
+    </g>
+
+    <!-- reading glasses -->
+    <g fill="none" stroke="#4a3b2f" stroke-width="3">
+      <circle cx="78" cy="100" r="19" />
+      <circle cx="122" cy="100" r="19" />
+      <path d="M97 98 Q100 94 103 98" stroke-linecap="round" />
+      <path d="M59 97 L47 92" stroke-linecap="round" />
+      <path d="M141 97 L153 92" stroke-linecap="round" />
+    </g>
+
+    <ellipse id="mouth" cx="100" cy="123" rx="4" ry="1" fill="#6b3418" data-open-rx="2" data-open-ry="6" />
+    <path d="M93 113 L107 113 L100 125 Z" fill="#f2a33c" stroke="#d98a22" stroke-width="1.2" stroke-linejoin="round" />
+
+    <g class="thinking-dots" fill="#ffffff" stroke="#7a5235" stroke-width="1.5">
+      <circle cx="148" cy="50" r="4" />
+      <circle cx="160" cy="38" r="5" />
+      <circle cx="174" cy="25" r="6" />
+    </g>
+  </g>
+</svg>

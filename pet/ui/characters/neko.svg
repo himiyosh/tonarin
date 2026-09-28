@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="190" height="190" aria-hidden="true">
+  <!-- ねこ: a ginger tabby with a collar bell. The bell is the status light. -->
+  <defs>
+    <radialGradient id="neko-fur" cx="40%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#fbd9a3" />
+      <stop offset="100%" stop-color="#e6a25a" />
+    </radialGradient>
+    <radialGradient id="neko-glow" cx="50%" cy="50%" r="50%">
+      <stop class="glow-core" offset="0%" />
+      <stop class="glow-edge" offset="100%" />
+    </radialGradient>
+  </defs>
+
+  <ellipse class="shadow" cx="100" cy="185" rx="50" ry="6.5" fill="#4a2a10" fill-opacity="0.16" />
+
+  <g class="float">
+    <!-- tail, body, paws -->
+    <path d="M136 168 C 172 166, 184 130, 164 108" fill="none" stroke="#e39a50" stroke-width="12" stroke-linecap="round" />
+    <path d="M168 114 C 166 110, 165 108, 164 108" fill="none" stroke="#c97c34" stroke-width="12" stroke-linecap="round" />
+    <path d="M58 178 C 52 150, 70 130, 100 130 C 130 130, 148 150, 142 178 Z" fill="url(#neko-fur)" stroke="#c98a45" stroke-width="2" />
+    <ellipse cx="100" cy="162" rx="22" ry="15" fill="#fff4e3" />
+    <ellipse cx="84" cy="178" rx="12" ry="6" fill="#f9d29c" stroke="#c98a45" stroke-width="1.5" />
+    <ellipse cx="116" cy="178" rx="12" ry="6" fill="#f9d29c" stroke="#c98a45" stroke-width="1.5" />
+
+    <!-- ears and head -->
+    <path d="M50 80 L57 36 L88 60 Z" fill="#f0b46a" stroke="#c98a45" stroke-width="2" stroke-linejoin="round" />
+    <path d="M60 70 L62 48 L79 62 Z" fill="#ffc9d6" />
+    <path d="M150 80 L143 36 L112 60 Z" fill="#f0b46a" stroke="#c98a45" stroke-width="2" stroke-linejoin="round" />
+    <path d="M140 70 L138 48 L121 62 Z" fill="#ffc9d6" />
+    <ellipse cx="100" cy="100" rx="58" ry="47" fill="url(#neko-fur)" stroke="#c98a45" stroke-width="2" />
+    <g fill="none" stroke="#d58a42" stroke-width="3" stroke-linecap="round">
+      <path d="M91 58 L93 68" />
+      <path d="M100 56 L100 68" />
+      <path d="M109 58 L107 68" />
+    </g>
+    <ellipse cx="100" cy="122" rx="24" ry="14" fill="#fff4e3" fill-opacity="0.9" />
+    <ellipse cx="62" cy="118" rx="9" ry="5.5" fill="#ff9fb3" fill-opacity="0.5" />
+    <ellipse cx="138" cy="118" rx="9" ry="5.5" fill="#ff9fb3" fill-opacity="0.5" />
+
+    <g class="eyes">
+      <g class="eye">
+        <ellipse cx="78" cy="98" rx="7.5" ry="10" fill="#2d241c" />
+        <circle cx="80.5" cy="94" r="2.6" fill="#ffffff" />
+      </g>
+      <g class="eye">
+        <ellipse cx="122" cy="98" rx="7.5" ry="10" fill="#2d241c" />
+        <circle cx="124.5" cy="94" r="2.6" fill="#ffffff" />
+      </g>
+    </g>
+    <g class="sleepy-eyes" fill="none" stroke="#2d241c" stroke-width="3.5" stroke-linecap="round">
+      <path d="M70 99 Q78 105 86 99" />
+      <path d="M114 99 Q122 105 130 99" />
+    </g>
+
+    <g stroke="#8a6a50" stroke-width="1.5" stroke-linecap="round">
+      <line x1="64" y1="114" x2="42" y2="110" />
+      <line x1="64" y1="120" x2="43" y2="122" />
+      <line x1="136" y1="114" x2="158" y2="110" />
+      <line x1="136" y1="120" x2="157" y2="122" />
+    </g>
+    <path d="M96 111 L104 111 L100 116 Z" fill="#ff8fa8" stroke="#e7738e" stroke-width="1" stroke-linejoin="round" />
+    <ellipse id="mouth" cx="100" cy="123" rx="2.5" ry="0.4" fill="#a8414f" data-open-rx="3" data-open-ry="6" />
+    <path d="M92 119 Q96 124 100 119 Q104 124 108 119" fill="none" stroke="#6a4632" stroke-width="2" stroke-linecap="round" />
+
+    <!-- collar and bell (status light) -->
+    <path d="M66 138 Q100 152 134 138" fill="none" stroke="#e05a6a" stroke-width="7" stroke-linecap="round" />
+    <circle class="bulb-halo" cx="100" cy="150" r="16" fill="url(#neko-glow)" />
+    <circle class="bulb" cx="100" cy="150" r="7.5" stroke="#ffffff" stroke-width="2" />
+    <path d="M93 150 L107 150 M100 151 L100 156" stroke="#000000" stroke-opacity="0.25" stroke-width="1.5" stroke-linecap="round" />
+    <g class="listen-rings">
+      <circle cx="100" cy="150" r="12" />
+      <circle cx="100" cy="150" r="12" />
+    </g>
+
+    <g class="thinking-dots" fill="#ffffff" stroke="#c98a45" stroke-width="1.5">
+      <circle cx="150" cy="44" r="4" />
+      <circle cx="162" cy="32" r="5" />
+      <circle cx="176" cy="20" r="6" />
+    </g>
+  </g>
+</svg>
