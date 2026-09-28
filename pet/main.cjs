@@ -255,9 +255,16 @@ function startProxy() {
       stdio: "pipe",
     });
     const log = fs.createWriteStream(logFile, { flags: "a" });
-    child.stdout?.pipe(log);
-    child.stderr?.pipe(log);
-    exited = new Promise((resolve) => child.once("exit", resolve));
+    // Both outputs share the file, so neither may close it: it is closed once both have ended after the proxy exited.
+    // Otherwise the last lines (such as "[proxy] stopped") can be lost when the app quits right after the proxy.
+    const outputs = [child.stdout, child.stderr].filter(Boolean);
+    for (const output of outputs) output.pipe(log, { end: false });
+    const drained = Promise.all(outputs.map((output) => new Promise((resolve) => output.once("end", resolve).once("close", resolve))));
+    exited = new Promise((resolve) => child.once("exit", resolve)).then(async (code) => {
+      await Promise.race([drained, new Promise((resolve) => setTimeout(resolve, 1000))]);
+      await new Promise((resolve) => log.end(resolve));
+      return code;
+    });
     handle = { stop: stopWith(() => (IS_WINDOWS ? child.postMessage({ type: "shutdown" }) : child.kill()), () => child.kill()) };
   } else {
     const log = fs.openSync(logFile, "a");
