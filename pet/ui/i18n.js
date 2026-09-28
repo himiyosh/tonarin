@@ -771,6 +771,7 @@ const WINDOWS_MESSAGES = {
     "pet.micError":
       "マイクが使えません。Windows の「設定」→「プライバシーとセキュリティ」→「マイク」で、マイクへのアクセスと「デスクトップ アプリがマイクにアクセスできるようにする」をオンにしてから、起動し直してください。",
     "general.loginDesc": "Windows にサインインしたら自動でペットを起動します。",
+    "character.codexDesc": "%USERPROFILE%\\.codex\\pets にあるペットを読み込みます。ファイルはその場で読むだけで、コピーしません。",
     "connection.geminiDesc":
       "リアルタイムの会話に使います。キーは Windows のデータ保護 (DPAPI) で、あなたのアカウントだけが読めるように暗号化して保存し、画面には表示しません。",
     "connection.statusKeychain": "設定済み (暗号化して保存)",
@@ -791,6 +792,7 @@ const WINDOWS_MESSAGES = {
     "pet.micError":
       "I can't use the microphone. In Windows Settings > Privacy & security > Microphone, turn on microphone access and \"Let desktop apps access your microphone\", then restart.",
     "general.loginDesc": "Start the pet when you sign in to Windows.",
+    "character.codexDesc": "Pets in %USERPROFILE%\\.codex\\pets are read in place and never copied.",
     "connection.geminiDesc":
       "Used for real-time conversation. Encrypted with Windows data protection (DPAPI) so only your account can read it, and never shown on screen.",
     "connection.statusKeychain": "Set (encrypted)",
