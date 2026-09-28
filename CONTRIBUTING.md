@@ -33,7 +33,8 @@ gitGraph
 | `hotfix/<topic>` | Urgent fix for a release | Branch off `main`, PR into `main`, then merge `main` back into `develop` |
 
 GitHub enforces this with branch protection: pull requests are required on `main` and `develop`, CI (`Node 22.x`,
-`Node 24.x`) must pass, force pushes and branch deletion are off.
+`Node 24.x`) must pass, force pushes and branch deletion are off. CI also runs the same checks on Windows, and when
+the app changes the Package workflow builds the macOS and Windows apps and starts each one once (`npm run smoke`).
 
 You can catch a mistaken push before it leaves your machine:
 
@@ -52,7 +53,10 @@ git push -u origin feature/short-description
 gh pr create --base develop
 ```
 
-Releases: open a pull request from `develop` into `main`, titled `release: vX.Y.Z`.
+Releases: set the version and write the notes in `docs/releases/` on `develop`, open a pull request from `develop`
+into `main` titled `release: vX.Y.Z`, then tag the merge on `main`. The Release workflow builds, checks and publishes
+it and refreshes the [download page](https://himiyosh.github.io/tonarin/). Step by step:
+[docs/releases/README.md](docs/releases/README.md).
 
 ## Commit messages
 
@@ -77,7 +81,7 @@ Examples: `feat(pet): open the menu on press-and-hold`, `fix(live): keep the res
 ## Before you open a pull request
 
 - `npm run typecheck` and `npm test` pass.
-- If behavior changed, you tried it with `npm run pet`.
+- If behavior changed, you tried it with `npm run pet` (on Windows too if you can, or check the Package workflow).
 - User-facing text is in both Japanese and English (`pet/ui/i18n.js`, `pet/i18n.cjs`).
 - The security design holds: the proxy stays on `127.0.0.1` with its key, Copilot keeps only Tonarin's custom
   tools, untrusted content stays labeled as data, and nothing logs transcripts or audio.
@@ -85,7 +89,7 @@ Examples: `feat(pet): open the menu on press-and-hold`, `fix(live): keep the res
 ## Never commit
 
 - `.env` files, API keys, tokens, `.npmrc` with credentials, certificates or signing identities
-- Logs, recordings, transcripts, or anything from `~/Library/Application Support/Tonarin/`
+- Logs, recordings, transcripts, or anything from `~/Library/Application Support/Tonarin/` or `%APPDATA%\Tonarin\`
 - Third-party artwork, including Codex / ChatGPT pets. Characters in this repository must be original.
 
 `.gitignore` covers the common cases, CI fails if such files are tracked, and GitHub secret scanning with push

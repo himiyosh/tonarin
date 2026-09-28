@@ -4,7 +4,7 @@
  * The Gemini API key is write-only here: it goes to the main process (keychain) and is never read back.
  */
 import { CHARACTERS, characterName } from "./characters.js";
-import { applyI18n, getLanguage, setLanguage, t } from "./i18n.js";
+import { applyI18n, getLanguage, PLATFORM, setLanguage, t } from "./i18n.js";
 import { loadSprite } from "./sprite.js";
 
 const api = window.pet.settings;
@@ -899,7 +899,7 @@ const mcpOpen = new Set(); // servers whose tool list is shown
 const mcpResults = new Map(); // "server/tool" -> { error, text } from the try button
 
 const MCP_PRESETS = {
-  calendar: { transport: "stdio", command: "~/bin/CheICalMCP", link: "che-ical" },
+  calendar: { transport: "stdio", command: "~/bin/CheICalMCP", link: "che-ical", only: "darwin" }, // the Mac Calendar app
   learn: { transport: "http", url: "https://learn.microsoft.com/api/mcp" },
   github: { transport: "http", url: "https://api.githubcopilot.com/mcp/", token: true, link: "github-token" },
   custom: { transport: "stdio", command: "", link: "mcp-servers" },
@@ -1380,22 +1380,24 @@ function sectionMcp() {
     list: el("div", { class: "mcp-list" }),
     editor: el("div", { class: "group editor", hidden: true }),
   };
-  const presets = Object.keys(MCP_PRESETS).map((id) =>
-    el(
-      "button",
-      {
-        class: "preset",
-        type: "button",
-        onclick: () => {
-          mcpEditing = mcpDraft(id);
-          renderMcp();
-          mcpRefs.editor.scrollIntoView({ behavior: "smooth", block: "start" });
+  const presets = Object.keys(MCP_PRESETS)
+    .filter((id) => !MCP_PRESETS[id].only || MCP_PRESETS[id].only === PLATFORM)
+    .map((id) =>
+      el(
+        "button",
+        {
+          class: "preset",
+          type: "button",
+          onclick: () => {
+            mcpEditing = mcpDraft(id);
+            renderMcp();
+            mcpRefs.editor.scrollIntoView({ behavior: "smooth", block: "start" });
+          },
         },
-      },
-      el("strong", { text: t(`mcp.preset.${id}`) }),
-      el("small", { text: t(`mcp.preset.${id}Sub`) }),
-    ),
-  );
+        el("strong", { text: t(`mcp.preset.${id}`) }),
+        el("small", { text: t(`mcp.preset.${id}Sub`) }),
+      ),
+    );
   queueMicrotask(() => void loadMcp());
   return [
     el("h1", { text: t("mcp.title") }),

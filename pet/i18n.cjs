@@ -91,8 +91,14 @@ function resolveLanguage(setting, locale) {
   return String(locale || "").toLowerCase().startsWith("ja") ? "ja" : "en";
 }
 
-function translator(language) {
-  const table = MESSAGES[language] ?? MESSAGES.ja;
+/** Wording that differs on Windows (the keyboard says Ctrl). Keys not listed use MESSAGES. */
+const WINDOWS = {
+  ja: { pinchHint: "ペットの上でピンチ (または Ctrl + スクロール) でも調整できます" },
+  en: { pinchHint: "You can also pinch on the pet (or Ctrl + scroll)" },
+};
+
+function translator(language, platform = process.platform) {
+  const table = { ...(MESSAGES[language] ?? MESSAGES.ja), ...(platform === "win32" ? WINDOWS[language] ?? WINDOWS.ja : {}) };
   return (key, vars = {}) =>
     (table[key] ?? MESSAGES.ja[key] ?? key).replace(/\{(\w+)\}/g, (_, name) => (name in vars ? String(vars[name]) : `{${name}}`));
 }

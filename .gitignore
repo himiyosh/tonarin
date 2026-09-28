@@ -94,3 +94,6 @@ Thumbs.db
 !.vscode/extensions.json
 .idea/
 *.swp
+
+# Download site build output (npm run site)
+_site/

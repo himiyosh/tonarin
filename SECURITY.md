@@ -17,7 +17,7 @@ Tonarin handles a microphone, API keys and connected apps, so these rules are ke
 
 | Area | Rule |
 |---|---|
-| Secrets | Gemini key, MCP tokens and the GitHub sign-in are encrypted with Electron `safeStorage` (macOS keychain) and never sent to a page |
+| Secrets | Gemini key, MCP tokens and the GitHub sign-in are encrypted with Electron `safeStorage` (macOS keychain, or DPAPI for the Windows account) and never sent to a page |
 | Local proxy | Binds to `127.0.0.1`, requires a bearer key, and rejects WebSocket connections from web page origins |
 | Copilot | Only Tonarin's custom read-only tools; built-in shell, file and URL tools are disabled; permission requests other than custom tools are rejected; empty temp working folder; Copilot Memory off |
 | Untrusted content | News articles and MCP results are labeled as data, not instructions, and capped in size; articles are fetched only from allow-listed HTTPS hosts, re-checked after redirects |
@@ -25,3 +25,4 @@ Tonarin handles a microphone, API keys and connected apps, so these rules are ke
 | Logging | App events and token counts only; never transcripts, audio or keys |
 | GitHub sign-in | OAuth device flow with a public client ID and no client secret; 8-hour tokens renewed automatically; read-only MCP access |
 | Pages | Strict Content Security Policy, sandboxed renderers, navigation and new windows blocked |
+| Releases | Built and smoke-tested in CI from a tag on `main`, published with SHA-256 checksums; the download page loads nothing from other sites |

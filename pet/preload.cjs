@@ -2,6 +2,8 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("pet", {
+  platform: process.platform, // "darwin" or "win32": some wording and styling differ
+
   // pet window
   config: () => ipcRenderer.invoke("pet:config"),
   codexPets: () => ipcRenderer.invoke("pet:codex-pets"),

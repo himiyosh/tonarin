@@ -47,7 +47,7 @@ html, body { margin: 0; height: 100%; }
 body {
   background: var(--bg);
   color: var(--text);
-  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif;
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -93,6 +93,10 @@ nav { display: flex; flex-direction: column; gap: 2px; }
 /* --- content -------------------------------------------------------------------- */
 .content { overflow-y: auto; padding: 0 36px 48px; }
 .content::before { content: ""; display: block; height: 28px; -webkit-app-region: drag; position: sticky; top: 0; }
+/* Windows: the normal title bar sits above the page, so no room for traffic lights and no drag areas. */
+[data-platform="win32"] .sidebar { padding-top: 18px; -webkit-app-region: no-drag; }
+[data-platform="win32"] .content { scrollbar-width: thin; }
+[data-platform="win32"] .content::before { height: 18px; -webkit-app-region: no-drag; }
 .section[hidden] { display: none; }
 .section h1 { font-size: 22px; margin: 6px 0 4px; letter-spacing: 0.01em; }
 .section > p.lead { color: var(--muted); margin: 0 0 18px; max-width: 640px; }
