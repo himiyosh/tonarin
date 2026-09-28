@@ -396,7 +396,7 @@ class PetConnection implements LiveSession {
       const delay = this.goAwayPending ? 0 : this.reconnects < FAST_RETRIES ? Math.min(1000 * 2 ** this.reconnects, 10_000) : SLOW_RETRY_MS;
       if (this.reconnects === FAST_RETRIES) console.error(`[live] Gemini is unreachable (${description}); retrying every ${SLOW_RETRY_MS / 1000} s`);
       this.reconnects++;
-      this.status("reconnecting", this.reconnects > FAST_RETRIES ? "Gemini につながりません。30 秒ごとに再接続を試しています。" : undefined);
+      this.status("reconnecting", this.reconnects > FAST_RETRIES ? "Gemini に接続できません。30 秒ごとに再接続を試しています。" : undefined);
       this.reconnectTimer = setTimeout(() => this.connectUpstream(), delay);
     });
   }
