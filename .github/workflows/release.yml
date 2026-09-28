@@ -1,0 +1,123 @@
+name: Release
+
+# A vX.Y.Z tag on main publishes a release (docs/releases/README.md): check that the tag, package.json and the notes
+# agree, build and smoke-test every app (package.yml), publish them on GitHub Releases with SHA256SUMS.txt and the
+# notes from docs/releases/, then refresh the download page. Running it by hand with a tag publishes that tag again
+# (new files and notes for an existing release).
+
+on:
+  push:
+    tags: ["v[0-9]*.[0-9]*.[0-9]*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to publish again (for example v0.2.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check the tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      previous: ${{ steps.tag.outputs.previous }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+      - id: tag
+        name: Tag, version and notes agree
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::$TAG is not a vX.Y.Z tag"; exit 1
+          fi
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::package.json says $version but the tag is $TAG: set the version on develop first (docs/releases/README.md)"; exit 1
+          fi
+          if [ ! -s "docs/releases/$TAG.md" ]; then
+            echo "::error::docs/releases/$TAG.md is missing: every release needs its notes"; exit 1
+          fi
+          if ! git merge-base --is-ancestor "$(git rev-list -n 1 "$TAG")" origin/main; then
+            echo "::error::$TAG is not on main: releases are tagged after the release pull request is merged"; exit 1
+          fi
+          previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$TAG^" 2>/dev/null || true)
+          {
+            echo "tag=$TAG"
+            echo "previous=$previous"
+            echo "prerelease=$([[ "$TAG" == *-* ]] && echo true || echo false)"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing $TAG (previous release: ${previous:-none})"
+
+  package:
+    name: Package
+    needs: check
+    uses: ./.github/workflows/package.yml
+    with:
+      ref: ${{ needs.check.outputs.tag }}
+
+  publish:
+    name: Publish the release
+    needs: [check, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the release and its files
+      actions: write # start the download page workflow
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.check.outputs.tag }}
+      PREVIOUS: ${{ needs.check.outputs.previous }}
+      PRERELEASE: ${{ needs.check.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check.outputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tonarin-*
+          path: release-assets
+          merge-multiple: true
+      - name: Checksums
+        working-directory: release-assets
+        run: |
+          sha256sum -- * > ../SHA256SUMS.txt
+          mv ../SHA256SUMS.txt .
+          cat SHA256SUMS.txt
+      - name: Release notes
+        run: |
+          set -euo pipefail
+          # Only the New Contributors section is taken from GitHub's generated notes.
+          if ! gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$TAG" ${PREVIOUS:+-f previous_tag_name="$PREVIOUS"} --jq .body > generated.md; then
+            : > generated.md
+          fi
+          node scripts/release-notes.mjs "$TAG" ${PREVIOUS:+--previous "$PREVIOUS"} --assets release-assets --generated generated.md > notes.md
+          cat notes.md
+      - name: Publish
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" release-assets/* --clobber
+            gh release edit "$TAG" --notes-file notes.md
+          else
+            flags=(--title "$TAG" --notes-file notes.md --verify-tag)
+            if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+            gh release create "$TAG" release-assets/* "${flags[@]}"
+          fi
+      - name: Refresh the download page
+        run: gh workflow run pages.yml --ref main || echo "::warning::could not start the download page workflow (is GitHub Pages enabled?)"
