@@ -1,8 +1,8 @@
 /* The macOS microphone prompt, in Japanese. */
-"NSMicrophoneUsageDescription" = "ペットと声で話すためにマイクを使います。おやすみ中とミュート中はマイクを閉じます。音声は Gemini Live に送られ、アプリには保存されません。";
+"NSMicrophoneUsageDescription" = "ペットと音声で会話するためにマイクを使用します。おやすみ中とミュート中はマイクを使用しません。音声は Gemini Live に送信され、Tonarin には保存されません。";
 
 /* カレンダーとリマインダーの確認: 設定の「アプリ連携」でカレンダーをつないだときだけ表示されます。 */
-"NSCalendarsUsageDescription" = "設定の「アプリ連携」でつないだカレンダーから予定を読み、ペットが予定を教えられるようにします。";
-"NSCalendarsFullAccessUsageDescription" = "設定の「アプリ連携」でつないだカレンダーから予定を読み、ペットが予定を教えられるようにします。";
-"NSRemindersUsageDescription" = "設定の「アプリ連携」でつないだカレンダーからリマインダーを読みます。";
-"NSRemindersFullAccessUsageDescription" = "設定の「アプリ連携」でつないだカレンダーからリマインダーを読みます。";
+"NSCalendarsUsageDescription" = "「設定」の「アプリ連携」で接続したカレンダーの予定を読み取り、ペットが予定をお知らせできるようにします。";
+"NSCalendarsFullAccessUsageDescription" = "「設定」の「アプリ連携」で接続したカレンダーの予定を読み取り、ペットが予定をお知らせできるようにします。";
+"NSRemindersUsageDescription" = "「設定」の「アプリ連携」で接続した Mac の「リマインダー」から項目を読み取ります。";
+"NSRemindersFullAccessUsageDescription" = "「設定」の「アプリ連携」で接続した Mac の「リマインダー」から項目を読み取ります。";
