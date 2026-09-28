@@ -4,11 +4,15 @@
 
 # Tonarin
 
-**The one next to you.** A voice desk companion for macOS that talks with you in real time,<br/>
+**The one next to you.** A voice desk companion for macOS and Windows that talks with you in real time,<br/>
 and hands the careful thinking to GitHub Copilot.
 
+**[Download](https://himiyosh.github.io/tonarin/)** · [Release notes](https://github.com/himiyosh/tonarin/releases)
+
 [![CI](https://github.com/himiyosh/tonarin/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/himiyosh/tonarin/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/himiyosh/tonarin?label=release&color=8b5cf6)](https://github.com/himiyosh/tonarin/releases/latest)
 ![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple&logoColor=white)
+![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011%20(preview)-0078D4?logo=windows&logoColor=white)
 ![Electron](https://img.shields.io/badge/Electron-44-47848F?logo=electron&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A5%2022.12-5FA04E?logo=nodedotjs&logoColor=white)
 ![Gemini Live](https://img.shields.io/badge/Gemini-Live%20API-8E75B2?logo=googlegemini&logoColor=white)
@@ -48,7 +52,7 @@ already have, and tells you the answer in its own words.
 | 🗣️ **Real-time voice** | Speak naturally and interrupt at any time. First audio usually arrives in about 1 second. |
 | 🧠 **Copilot as the brain** | Deep dives go to GitHub Copilot through the official SDK, using the Copilot plan you already pay for. |
 | 🐾 **Lives on your desk** | A small, always-on-top character with a speech bubble, not another chat window. |
-| 🔒 **Private by design** | Keys stay in the macOS keychain, the local proxy only listens on 127.0.0.1, and nothing you say is logged. |
+| 🔒 **Private by design** | Keys stay in your system's secure storage, the local proxy only listens on 127.0.0.1, and nothing you say is logged. |
 
 ## Features
 
@@ -58,11 +62,12 @@ already have, and tells you the answer in its own words.
 | **Copilot deep dives** | `ask_copilot` hands articles, comparisons, explanations and design questions to a sandboxed Copilot session. |
 | **Tech news** | Headlines from 12 curated RSS feeds (Japanese and English). The pet introduces them and Copilot reads the full article when you want more. |
 | **Reminders and automations** | "Remind me in 20 minutes", a morning briefing, scheduled Copilot research, break nudges and keyword watch, with a history you can review. |
-| **Connected apps (MCP)** | Model Context Protocol servers become the pet's tools: your Mac's calendar (Google, iCloud, Exchange), Microsoft Learn, and GitHub (read-only, with **Sign in with GitHub**). |
+| **Connected apps (MCP)** | Model Context Protocol servers become the pet's tools: your Mac's calendar (Google, iCloud, Exchange; macOS), Microsoft Learn, and GitHub (read-only, with **Sign in with GitHub**). |
 | **Noise filter** | Only voice-like sound reaches Gemini, so typing, fans or a door do not start a conversation. Three levels. |
 | **Usage and cost** | A settings page that shows what the paid tier would bill, today's usage and an estimate. |
 | **Characters** | 8 original characters, sizes from 50% to 200%, and support for Codex / ChatGPT pet spritesheets. |
 | **Mac-native touches** | Menu bar icon, Liquid Glass app icon on macOS 26, sleeps with your screen lock, and the bubble opens on whichever side of the pet has room. |
+| **Windows (preview)** | A notification-area icon (a left click opens the menu), an installer for your account without admin rights, keys encrypted with DPAPI, and starting it again brings back the running pet. |
 
 ## Quick start
 
@@ -70,12 +75,30 @@ already have, and tells you the answer in its own words.
 
 | | |
 |---|---|
-| **Mac** | Apple Silicon. Developed and tested on macOS 26. |
+| **Computer** | A Mac with Apple Silicon (developed and tested on macOS 26), or a Windows 10 / 11 PC, x64 or ARM64 (preview). |
 | **Gemini API key** | Free from [Google AI Studio](https://aistudio.google.com/apikey). The free tier works (see [Costs](#costs)). |
 | **GitHub Copilot** *(optional)* | Any plan. Sign in once with the [Copilot CLI](https://github.com/github/copilot-cli), or set `COPILOT_GITHUB_TOKEN`. Without it, Tonarin still talks, just without deep dives. |
-| **Node.js** | 22.12 or later, to build from source. |
+| **Node.js** | 22.12 or later, only to build from source. |
 
-### Build and run
+### Download
+
+Get the app from the **[download page](https://himiyosh.github.io/tonarin/)**, which picks the right file for your
+computer, or from [GitHub Releases](https://github.com/himiyosh/tonarin/releases): `Tonarin-<version>-mac-arm64.dmg`
+(or `.zip`) for a Mac, `Tonarin-<version>-win-x64-setup.exe` or `-win-arm64-setup.exe` for Windows. Each release lists
+SHA-256 checksums in `SHA256SUMS.txt`.
+
+On first launch the settings window opens at **Connection**. Paste your Gemini API key and the pet wakes up.
+
+> [!NOTE]
+> The apps are not notarized by Apple or code signed for Windows yet, so each system asks once:
+> - **macOS**: when Tonarin is blocked the first time, open System Settings → Privacy & Security and click
+>   **Open Anyway** (on macOS 14 and earlier, right-click the app → **Open**). macOS then asks for microphone access,
+>   and the first time the pet reads your calendar it asks for calendar access too.
+> - **Windows**: if SmartScreen says "Windows protected your PC", choose **More info** → **Run anyway**. The installer
+>   sets Tonarin up for your account only. If the microphone does not work, turn on "Let desktop apps access your
+>   microphone" in Settings → Privacy & security → Microphone.
+
+### Build from source
 
 ```bash
 git clone https://github.com/himiyosh/tonarin.git
@@ -83,24 +106,23 @@ cd tonarin
 npm install
 npm run pet          # run from source
 # or
-npm run dist         # build release/Tonarin-<version>-arm64.dmg
+npm run dist         # build the app for this computer into release/
 ```
 
-On first launch the settings window opens at **Connection**. Paste your Gemini API key and the pet wakes up.
-
-> [!NOTE]
-> Builds are ad hoc signed until a Developer ID is set up. The first time, open the app with right-click → **Open**.
-> macOS asks for microphone access, and the first time the pet reads your calendar it asks for calendar access too.
+`npm run dist` makes `Tonarin-<version>-mac-arm64.dmg` and `.zip` on a Mac, and
+`Tonarin-<version>-win-<arch>-setup.exe` on Windows. Build each platform on that platform: npm installs the Copilot
+runtime only for the system it runs on.
 
 ## Using Tonarin
 
 | Action | Result |
 |---|---|
 | **Talk** | Just speak. Ask about anything, or say "what's new in tech?" |
-| **Click** | Mute or unmute the microphone (muting closes the mic, so the macOS mic indicator goes off). Wakes the pet when it is asleep. |
+| **Click** | Mute or unmute the microphone (muting closes the mic, so the system's mic indicator goes off). Wakes the pet when it is asleep. |
 | **Drag** | Move the pet anywhere, up to the top of the screen. |
-| **Right-click**, **Control-click** or **press and hold** | Menu: sleep, mute, character, size, reset the conversation, settings, quit. |
-| **Pinch** (or Control + scroll) | Resize the pet. |
+| **Right-click**, **Control-click** (Mac) or **press and hold** | Menu: sleep, mute, character, size, reset the conversation, settings, quit. |
+| **Pinch** (or Control + scroll, Ctrl + scroll on Windows) | Resize the pet. |
+| **Menu bar icon** (Mac) / **notification-area icon** (Windows) | Show or hide the pet, sleep, mute, settings, quit. On Windows a left click opens it too. |
 
 Things to try:
 
@@ -116,9 +138,9 @@ connection are closed until you click it.
 
 ```mermaid
 flowchart LR
-  subgraph Mac["Your Mac"]
+  subgraph Computer["Your computer"]
     Pet["🐾 Pet window<br/>(Electron renderer)<br/>mic 16 kHz · speaker 24 kHz"]
-    Main["Main process<br/>settings · keychain · menus"]
+    Main["Main process<br/>settings · secure storage · menus"]
     Proxy["Local proxy<br/>127.0.0.1 only"]
     MCP["MCP servers<br/>calendar · Learn · GitHub"]
   end
@@ -136,8 +158,8 @@ flowchart LR
 
 - **Pet window** (`pet/ui/`): captures the microphone, runs the [noise filter](pet/ui/speech-gate.js), plays audio,
   draws the character and the speech bubble.
-- **Main process** (`pet/main.cjs`): settings, the keychain, the menu bar, window layout, Sign in with GitHub, and
-  the bundled proxy's lifecycle.
+- **Main process** (`pet/main.cjs`): settings, secure storage, the menu bar or notification-area icon, window layout,
+  Sign in with GitHub, and the bundled proxy's lifecycle.
 - **Proxy** (`src/`): relays audio to Gemini Live, runs the tools (news, reminders, automations, MCP), and keeps a
   dedicated Copilot session for deep dives. It is also an OpenAI-compatible endpoint, which is how the project
   started (see [Configuration](docs/configuration.md#openai-compatible-endpoint)).
@@ -145,7 +167,7 @@ flowchart LR
 ## Privacy and security
 
 - **Keys stay local.** The Gemini key, MCP tokens and the GitHub sign-in are encrypted with Electron `safeStorage`
-  (the macOS keychain). Pages never receive them.
+  (the macOS keychain, or DPAPI for your Windows account). Pages never receive them.
 - **Local-only proxy.** It binds to `127.0.0.1`, requires a bearer key, and rejects WebSocket connections from web pages.
 - **Copilot is sandboxed.** Only Tonarin's own read-only tools are exposed; built-in shell, file and URL tools are
   disabled, the working folder is an empty temp folder, and Copilot Memory is off.
@@ -179,9 +201,10 @@ What the paid tier bills, and how Tonarin keeps it low:
 
 ## Configuration
 
-Everything a user needs is in the settings window (menu bar icon, right-click → Settings, or <kbd>⌘</kbd> <kbd>,</kbd>):
-general, character, conversation and voice, automations, connected apps, news, connection, usage and cost.
-Settings are stored in `~/Library/Application Support/Tonarin/`.
+Everything a user needs is in the settings window (menu bar or notification-area icon, right-click → Settings, or
+<kbd>⌘</kbd> <kbd>,</kbd> on a Mac): general, character, conversation and voice, automations, connected apps, news,
+connection, usage and cost. Settings are stored in `~/Library/Application Support/Tonarin/` on a Mac and in
+`%APPDATA%\Tonarin\` on Windows.
 
 Environment variables for development and for the standalone proxy are listed in
 [docs/configuration.md](docs/configuration.md).
@@ -192,11 +215,15 @@ Environment variables for development and for the standalone proxy are listed in
 |---|---|
 | `npm run pet` | Run the pet from source (starts the proxy with `tsx`) |
 | `npm run pet:bundled` | Run with the bundled proxy, like the packaged app |
-| `npm run dist` | Build the `.app`, `.zip` and `.dmg` into `release/` |
+| `npm run dist` | Build the app for this computer into `release/`: `.dmg` and `.zip` on a Mac, the installer on Windows |
+| `npm run smoke` | Start the packaged build once with a temporary settings folder and check that it works |
+| `npm run site` | Build the download page into `_site/` (`-- --fixture tests/fixtures/releases.json --serve` to try it) |
+| `npm run release-notes -- vX.Y.Z` | Preview the body of a release from `docs/releases/` |
 | `npm run typecheck` | TypeScript check |
 | `npm test` | Unit tests (`node:test`) |
 | `npm run live:check -- "prompt"` | Mic-less smoke test against Gemini Live |
 | `npm run icon` | Rebuild the Liquid Glass icon (needs Xcode 26+) |
+| `npm run icon:derive` | Rebuild the Windows icons and the download page images from the app icon (needs Pillow) |
 | `npm run hooks` | Enable the repo's Git hooks (blocks direct pushes to `main`) |
 
 ```text
@@ -204,22 +231,24 @@ tonarin/
 ├── pet/            Electron app: main process, preload, settings, layout, GitHub sign-in
 │   └── ui/         Pet and settings pages, audio worklets, noise filter, characters
 ├── src/            Local proxy: Gemini Live relay, Copilot, news, reminders, automations, MCP, usage
-├── scripts/        Build, packaging, icon and smoke-test scripts
-├── assets/ build/  App and tray icons, Liquid Glass icon, entitlements, Info.plist strings
+├── scripts/        Build, packaging, icon, smoke-test, release-notes and download-site scripts
+├── assets/ build/  App and tray icons (macOS and Windows), Liquid Glass icon, entitlements, Info.plist strings
+├── site/           The download page (GitHub Pages)
 ├── tests/          Unit tests
-└── docs/           Configuration reference
+└── docs/           Configuration reference, release notes (docs/releases/)
 ```
 
 ## Contributing
 
 Contributions are welcome. `main` only receives pull requests from `develop`; day-to-day work goes to feature
 branches that merge into `develop`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch model, commit style and
-checklist.
+checklist, and [docs/releases/](docs/releases/README.md) for how releases are made.
 
 ## Limitations
 
-- macOS on Apple Silicon only for now.
-- Not notarized yet (needs a Developer ID).
+- macOS on Apple Silicon and Windows 10 / 11 for now; Windows is a preview. No Intel Mac or Linux builds yet.
+- Not notarized for macOS yet (needs a Developer ID), and not code signed for Windows yet.
+- The Mac Calendar preset and the OpenAI-compatible `/v1/audio/speech` endpoint (macOS `say`) are macOS only.
 - On some macOS 26 trackpads, a two-finger click right after a normal click arrives as a left click in every app.
   Use press-and-hold or Control-click to open the menu then.
 - Gemini Live sessions have a limited lifetime. Tonarin resumes them when it can, but after a nap the conversation

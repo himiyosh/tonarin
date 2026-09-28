@@ -1,7 +1,7 @@
 /**
  * App settings, stored in the app's own folder (userData/settings.json), and secrets (the Gemini API key)
- * encrypted with Electron safeStorage (backed by the macOS keychain). Nothing here is read from .env,
- * except as a fallback the caller decides on (development setups keep working).
+ * encrypted with Electron safeStorage (backed by the macOS keychain, or DPAPI for the Windows account). Nothing here
+ * is read from .env, except as a fallback the caller decides on (development setups keep working).
  */
 const { safeStorage } = require("electron");
 const { EventEmitter } = require("node:events");
@@ -174,7 +174,16 @@ function readJson(file) {
 function writeJson(file, data) {
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
-  fs.renameSync(tmp, file);
+  // On Windows a virus scanner or the search indexer can hold the file for a moment: try again briefly.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      fs.renameSync(tmp, file);
+      return;
+    } catch (error) {
+      if (process.platform !== "win32" || attempt >= 5 || !["EPERM", "EACCES", "EBUSY"].includes(error?.code)) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40 * attempt);
+    }
+  }
 }
 
 module.exports = { Settings, DEFAULTS, catalog };

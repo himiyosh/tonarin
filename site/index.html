@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="ja" data-lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://github.com https://*.githubusercontent.com; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'"
+    />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Tonarin — となりにいる、声の相棒 | ダウンロード</title>
+    <meta
+      name="description"
+      content="Tonarin (となりん) はデスクトップに住む小さな相棒。Gemini Live とリアルタイムに話せて、じっくり考える質問は GitHub Copilot に任せます。macOS と Windows (プレビュー) 用。A voice desk companion for macOS and Windows."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://himiyosh.github.io/tonarin/" />
+    <meta property="og:title" content="Tonarin — The one next to you" />
+    <meta property="og:description" content="A voice desk companion for macOS and Windows: real-time conversation with Gemini Live, and GitHub Copilot as the brain for deep dives." />
+    <meta property="og:image" content="https://himiyosh.github.io/tonarin/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="favicon.png" type="image/png" />
+    <link rel="stylesheet" href="style.css" />
+    <script src="lang.js"></script>
+    <script type="module" src="app.js"></script>
+  </head>
+  <!--
+    THESIS: Tonarin's release board. The newest version is pinned on top with the right file for this computer already
+    chosen, and the mochi sits beside it saying what changed. Refuses the category's hero-plus-screenshot page.
+    OWN-WORLD: the app icon at page scale: its indigo-violet-pink field (#4f46ff, #8b5cf6, #ff6fb5, mint and orange
+    glows) holding a white board card and the white mochi; the app's own speech bubble and status light (mint idle,
+    amber thinking, pink speaking, green listening); rounded numerals; lavender-white ground, indigo night in dark mode.
+    STORY: see what Tonarin is and that v0.2.0 brings Windows (preview), take the right download, get through the
+    first launch, look back at earlier releases.
+    FIRST VIEWPORT: field with headline and board card left (version, date, highlight, primary download, other
+    platform), bubble and mochi right; language switch top right.
+    FORM: release board, candidate 5 of 6; staging: pinned latest entry above history; seed 9b265fcf.
+  -->
+  <body>
+    <a class="skip" href="#board"><span class="t" lang="ja">ダウンロードへ移動</span><span class="t" lang="en">Skip to the download</span></a>
+
+    <section class="field" aria-labelledby="title">
+      <header class="bar">
+        <a class="brand" href="./" aria-label="Tonarin">
+          <img src="favicon.png" alt="" width="32" height="32" />
+          <span class="brand-name">Tonarin</span>
+          <span class="brand-kana" lang="ja">となりん</span>
+        </a>
+        <nav class="bar-links" aria-label="Site">
+          <div class="lang-switch" role="group" aria-label="Language / 言語">
+            <button type="button" data-set-lang="ja" lang="ja">日本語</button>
+            <button type="button" data-set-lang="en" lang="en">English</button>
+          </div>
+          <a class="pill-link" href="https://github.com/himiyosh/tonarin">GitHub</a>
+        </nav>
+      </header>
+
+      <div class="stage">
+        <div class="pitch">
+          <h1 id="title">
+            <span class="t" lang="ja">となりにいる、<br />声の相棒。</span>
+            <span class="t" lang="en">The one<br />next to you.</span>
+          </h1>
+          <p class="lede">
+            <span class="t" lang="ja">デスクトップに住む小さなキャラクターと、同僚に話しかけるように話せます。返事はだいたい 1 秒。じっくり考える質問は、あなたの GitHub Copilot に任せます。</span>
+            <span class="t" lang="en">A small character that lives on your desktop. Talk to it like the colleague at the next desk: it answers in about a second, and hands the careful thinking to your GitHub Copilot.</span>
+          </p>
+        </div>
+
+        <article class="board" id="board" aria-labelledby="board-version" data-state="loading">
+          <div class="board-head">
+            <h2 class="version" id="board-version">v—</h2>
+            <p class="stamp">
+              <span class="status-light" aria-hidden="true"></span>
+              <span data-slot="stamp"><span class="t" lang="ja">リリース情報を読み込んでいます…</span><span class="t" lang="en">Loading the latest release…</span></span>
+            </p>
+          </div>
+          <p class="highlight" data-slot="highlight"></p>
+          <div class="actions" data-slot="actions">
+            <a class="button primary" href="https://github.com/himiyosh/tonarin/releases/latest">
+              <span class="t" lang="ja">最新版をダウンロード</span><span class="t" lang="en">Download the latest version</span>
+            </a>
+          </div>
+          <p class="fineprint" data-slot="fineprint">
+            <span class="t" lang="ja">無料・オープンソース (MIT)。ファイルは GitHub Releases から配布しています。</span>
+            <span class="t" lang="en">Free and open source (MIT). Files are served from GitHub Releases.</span>
+          </p>
+        </article>
+
+        <aside class="companion" aria-label="Tonarin">
+          <div class="bubble" data-slot="bubble" aria-live="polite">
+            <p class="you" data-slot="you"></p>
+            <p class="says" data-slot="says"></p>
+          </div>
+          <button class="pet" type="button" data-slot="pet" data-state="thinking">
+            <span class="visually-hidden" data-slot="pet-label">
+              <span class="t" lang="ja">キャラクターを替える</span><span class="t" lang="en">Meet another character</span>
+            </span>
+            <span class="character" data-slot="character" aria-hidden="true"></span>
+          </button>
+          <p class="pet-hint" aria-hidden="true">
+            <span class="t" lang="ja">クリックで 8 体のキャラクターに会えます</span><span class="t" lang="en">Click to meet all 8 characters</span>
+          </p>
+        </aside>
+      </div>
+    </section>
+
+    <main class="sheet">
+      <section class="notes" aria-labelledby="notes-title">
+        <h2 id="notes-title" data-slot="notes-title">
+          <span class="t" lang="ja">リリースノート</span><span class="t" lang="en">What's new</span>
+        </h2>
+        <div class="prose" data-slot="notes">
+          <p class="t" lang="ja">最初のリリースを準備しています。それまではソースからビルドできます (<a href="https://github.com/himiyosh/tonarin#build-from-source">手順</a>)。</p>
+          <p class="t" lang="en">The first release is on its way. Until then you can build from source (<a href="https://github.com/himiyosh/tonarin#build-from-source">how</a>).</p>
+        </div>
+      </section>
+
+      <section class="files" aria-labelledby="files-title">
+        <h2 id="files-title">
+          <span class="t" lang="ja">すべてのファイル</span><span class="t" lang="en">All files</span>
+        </h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col"><span class="t" lang="ja">対象</span><span class="t" lang="en">For</span></th>
+                <th scope="col"><span class="t" lang="ja">ファイル</span><span class="t" lang="en">File</span></th>
+                <th scope="col" class="num"><span class="t" lang="ja">サイズ</span><span class="t" lang="en">Size</span></th>
+                <th scope="col">SHA-256</th>
+              </tr>
+            </thead>
+            <tbody data-slot="files">
+              <tr>
+                <td colspan="4" class="empty">
+                  <span class="t" lang="ja">まだ公開されたファイルはありません。</span><span class="t" lang="en">No files have been published yet.</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="aside-note" data-slot="files-note"></p>
+      </section>
+
+      <section class="first-run" id="first-launch" aria-labelledby="first-launch-title">
+        <h2 id="first-launch-title">
+          <span class="t" lang="ja">はじめて起動するとき</span><span class="t" lang="en">The first launch</span>
+        </h2>
+        <p class="section-lede">
+          <span class="t" lang="ja">アプリにはまだ Apple の公証も Windows のコード署名もないため、最初の一度だけ確認が出ます。</span>
+          <span class="t" lang="en">The app is not notarized by Apple or code signed for Windows yet, so each system asks once before the first start.</span>
+        </p>
+        <div class="platforms">
+          <div class="platform" data-os="mac">
+            <h3>macOS <small>Apple Silicon</small></h3>
+            <ol class="t" lang="ja">
+              <li>.dmg を開き、Tonarin を「アプリケーション」フォルダへドラッグします。</li>
+              <li>Tonarin を開くと、はじめは確認のできないアプリとして止められます。「システム設定」→「プライバシーとセキュリティ」の下のほうにある「このまま開く」をクリックして、もう一度開きます (macOS 14 以前は、Tonarin を右クリック →「開く」)。</li>
+              <li>マイクへのアクセスを許可します。設定の「接続」が開くので、Gemini の API キーを貼り付けるとペットが目を覚まします。</li>
+            </ol>
+            <ol class="t" lang="en">
+              <li>Open the .dmg and drag Tonarin to the Applications folder.</li>
+              <li>Open Tonarin. macOS stops it the first time: go to System Settings → Privacy &amp; Security, click <b>Open Anyway</b> near the bottom and open it again (on macOS 14 and earlier: right-click Tonarin → <b>Open</b>).</li>
+              <li>Allow microphone access. Settings opens at Connection: paste your Gemini API key and the pet wakes up.</li>
+            </ol>
+          </div>
+          <div class="platform" data-os="win">
+            <h3>Windows <small>10 / 11</small> <span class="tag preview"><span class="t" lang="ja">プレビュー</span><span class="t" lang="en">Preview</span></span></h3>
+            <ol class="t" lang="ja">
+              <li>Tonarin-…-setup.exe を実行します。あなたのアカウントにだけインストールされ、管理者の権限は要りません。</li>
+              <li>「Windows によって PC が保護されました」と表示されたら、「詳細情報」→「実行」を選びます。</li>
+              <li>インストールが終わると Tonarin が起動し、通知領域 (タスクバーの右端) にアイコンが出ます。設定の「接続」で Gemini の API キーを貼り付けてください。</li>
+            </ol>
+            <ol class="t" lang="en">
+              <li>Run Tonarin-…-setup.exe. It installs for your account only and needs no admin rights.</li>
+              <li>If Windows says “Windows protected your PC”, choose <b>More info</b> → <b>Run anyway</b>.</li>
+              <li>Tonarin starts when the installer finishes, with its icon in the notification area (the right end of the taskbar). Paste your Gemini API key in Settings → Connection.</li>
+            </ol>
+            <p class="platform-note">
+              <span class="t" lang="ja">マイクが使えないときは、Windows の「設定」→「プライバシーとセキュリティ」→「マイク」で「デスクトップ アプリがマイクにアクセスできるようにする」をオンにします。</span>
+              <span class="t" lang="en">If the microphone does not work, turn on “Let desktop apps access your microphone” in Windows Settings → Privacy &amp; security → Microphone.</span>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="needs" aria-labelledby="needs-title">
+        <h2 id="needs-title"><span class="t" lang="ja">用意するもの</span><span class="t" lang="en">What you need</span></h2>
+        <dl class="needs-list">
+          <div>
+            <dt><span class="t" lang="ja">Gemini の API キー (無料)</span><span class="t" lang="en">A Gemini API key (free)</span></dt>
+            <dd>
+              <span class="t" lang="ja"><a href="https://aistudio.google.com/apikey">Google AI Studio</a> で発行できます。無料枠では、送った内容が Google の製品改善に使われ、人が読む場合があります。個人的な話は避けるか、有料枠を使ってください。</span>
+              <span class="t" lang="en">Get one from <a href="https://aistudio.google.com/apikey">Google AI Studio</a>. On the free tier Google may use what you send to improve its products, and people may read it: keep personal matters out, or use the paid tier.</span>
+            </dd>
+          </div>
+          <div>
+            <dt><span class="t" lang="ja">GitHub Copilot (なくても使えます)</span><span class="t" lang="en">GitHub Copilot (optional)</span></dt>
+            <dd>
+              <span class="t" lang="ja">深掘りの質問に使います。プランは問いません。<a href="https://github.com/github/copilot-cli">Copilot CLI</a> で一度サインインしておいてください。なくても会話はできます。</span>
+              <span class="t" lang="en">Used for deep dives, on any plan. Sign in once with the <a href="https://github.com/github/copilot-cli">Copilot CLI</a>. Without it Tonarin still talks, just without deep dives.</span>
+            </dd>
+          </div>
+          <div>
+            <dt><span class="t" lang="ja">マイク</span><span class="t" lang="en">A microphone</span></dt>
+            <dd>
+              <span class="t" lang="ja">声らしい音がしたときだけ Gemini に送ります。おやすみ中とミュート中はマイクを閉じます。話した内容はログに残しません。</span>
+              <span class="t" lang="en">Only voice-like sound is sent to Gemini. The mic is closed while the pet naps or is muted, and nothing you say is logged.</span>
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="history" aria-labelledby="history-title">
+        <h2 id="history-title"><span class="t" lang="ja">これまでのリリース</span><span class="t" lang="en">Earlier releases</span></h2>
+        <ol class="history-list" data-slot="history" reversed></ol>
+        <p class="aside-note" data-slot="history-empty">
+          <span class="t" lang="ja">いまのリリースが最初のリリースです。</span><span class="t" lang="en">This is the first release.</span>
+        </p>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <p>
+        <span class="t" lang="ja">このページはほかのサイトから何も読み込みません (トラッカーなし)。ダウンロードは GitHub Releases から直接です。</span>
+        <span class="t" lang="en">This page loads nothing from other sites and has no trackers. Downloads come straight from GitHub Releases.</span>
+      </p>
+      <p class="foot-links">
+        <a href="https://github.com/himiyosh/tonarin">GitHub</a>
+        <a href="https://github.com/himiyosh/tonarin/releases">Releases</a>
+        <a href="https://github.com/himiyosh/tonarin/blob/main/SECURITY.md"><span class="t" lang="ja">セキュリティ</span><span class="t" lang="en">Security</span></a>
+        <a href="https://github.com/himiyosh/tonarin/blob/main/LICENSE">MIT License</a>
+        <span>© himiyosh</span>
+      </p>
+    </footer>
+  </body>
+</html>

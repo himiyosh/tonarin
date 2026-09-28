@@ -1,12 +1,14 @@
 /**
  * Tonarin: a small transparent, always-on-top pet that talks with you through the local proxy's realtime endpoint
- * (ws://127.0.0.1:8787/v1/live, Gemini Live behind it), plus a settings window and a menu bar icon.
+ * (ws://127.0.0.1:8787/v1/live, Gemini Live behind it), plus a settings window and a menu bar (tray) icon.
+ * It runs on macOS and Windows.
  *
- * Start with "Tonarin (dev).app" (npm run launcher) or `npm run pet`. If the proxy is not running yet, the app starts it
- * (logs go to logs/proxy.log) and stops it again on quit.
+ * Start with "Tonarin (dev).app" (npm run launcher, macOS) or `npm run pet`. If the proxy is not running yet, the app
+ * starts it (logs go to logs/proxy.log) and stops it again on quit.
  *
- * Settings live in the app's own folder (userData/settings.json); the Gemini API key is encrypted with the keychain.
- * .env values still work as a fallback, so development setups keep running.
+ * Settings live in the app's own folder (userData/settings.json); the Gemini API key is encrypted with safeStorage
+ * (the macOS keychain, or DPAPI for your Windows account). .env values still work as a fallback, so development
+ * setups keep running.
  */
 const {
   app,
@@ -43,15 +45,25 @@ const { Settings, catalog } = require("./settings.cjs");
 const ROOT = path.resolve(__dirname, "..");
 const PACKAGE = require("../package.json");
 const APP_VERSION = PACKAGE.version;
+const IS_MAC = process.platform === "darwin";
+const IS_WINDOWS = process.platform === "win32";
 // Public client ID of the Tonarin OAuth App on GitHub (device flow, no secret). Empty: only token pasting is offered.
 const GITHUB_CLIENT_ID = process.env.TONARIN_GITHUB_CLIENT_ID || PACKAGE.tonarin?.githubClientId || "";
 const GITHUB_MCP_URL = "https://api.githubcopilot.com/mcp/";
 // The app's name: menus, the keychain item ("<name> Safe Storage") and the settings folder
-// (~/Library/Application Support/<name>). It comes from package.json "productName", the same value electron-builder
-// uses for the .app, so renaming the app is a one-line change. A development run would otherwise use Electron's defaults.
+// (~/Library/Application Support/<name>, %APPDATA%\<name> on Windows). It comes from package.json "productName", the
+// same value electron-builder uses for the app, so renaming the app is a one-line change. A development run would
+// otherwise use Electron's defaults. TONARIN_USER_DATA points one run at another folder (a second copy, a smoke test).
 const APP_NAME = PACKAGE.productName ?? "Tonarin";
 app.setName(APP_NAME);
-app.setPath("userData", path.join(app.getPath("appData"), APP_NAME));
+app.setPath("userData", process.env.TONARIN_USER_DATA || path.join(app.getPath("appData"), APP_NAME));
+// Windows ties notifications and the taskbar to this ID; the installer gives the Start menu shortcut the same one.
+// Development runs have no such shortcut, and Windows shows their notifications under the Electron binary's path.
+if (IS_WINDOWS) app.setAppUserModelId(app.isPackaged ? (PACKAGE.tonarin?.appId ?? "io.github.himiyosh.tonarin") : process.execPath);
+// macOS brings a running app to the front instead of starting it twice. Elsewhere a second launch (the Start menu,
+// the desktop shortcut) would start a second pet with its own proxy, so it only wakes the running one and quits.
+const SECOND_INSTANCE = !IS_MAC && !app.requestSingleInstanceLock();
+if (SECOND_INSTANCE) app.quit();
 // Earlier names of the app (2026-09-27: "AI Pet" became "Tonarin"). Their settings folder is copied once into the new
 // one. Keychain secrets are not: they are encrypted with the old name's keychain item, so keys are entered again.
 const PREVIOUS_NAMES = ["AI Pet"];
@@ -104,9 +116,10 @@ function readDotEnv() {
 const dotEnv = readDotEnv();
 const env = (name, fallback = "") => process.env[name] ?? dotEnv[name] ?? fallback;
 // Packaged apps run their own proxy, bundled into dist/server.mjs, inside Electron (utilityProcess): no Node.js or tsx
-// needed, and a free port per launch so it never meets a development proxy. PET_BUNDLED_PROXY=1 tries that path in a
-// development run (after `npm run build:proxy`). Development runs otherwise use port 8787 and `node --import tsx`.
-const BUNDLED_PROXY = app.isPackaged || env("PET_BUNDLED_PROXY") === "1";
+// needed, and a free port per launch so it never meets a development proxy. `npm run pet:bundled` (--bundled-proxy,
+// or PET_BUNDLED_PROXY=1) tries that path in a development run. Development runs otherwise use port 8787 and
+// `node --import tsx`.
+const BUNDLED_PROXY = app.isPackaged || env("PET_BUNDLED_PROXY") === "1" || process.argv.includes("--bundled-proxy");
 let PORT = Number(env("PORT", "8787"));
 const ENV_PROXY_KEY = env("PROXY_API_KEY");
 const ENV_GEMINI_KEY = env("GEMINI_API_KEY");
@@ -198,7 +211,8 @@ function startProxy() {
   const logFile = path.join(logDir(), "proxy.log");
   const childEnv = {
     ...process.env,
-    PATH: [process.env.PATH, "/opt/homebrew/bin", "/usr/local/bin"].filter(Boolean).join(":"),
+    // An app started from the Dock or Finder gets a short PATH; Windows keeps its own.
+    ...(IS_WINDOWS ? {} : { PATH: [process.env.PATH, "/opt/homebrew/bin", "/usr/local/bin"].filter(Boolean).join(":") }),
     PORT: String(PORT),
     PROXY_API_KEY: proxyKey(),
     WHISPER: "off", // local speech recognition is only for the AIRI setup
@@ -222,6 +236,17 @@ function startProxy() {
     }
   };
   let handle;
+  // Stopping lets the proxy shut down gracefully, so the Copilot runtime and MCP servers it started stop too: a signal
+  // on macOS, a message on Windows (it has no signals a process can catch). If that fails, the process is ended.
+  const stopWith = (graceful, kill) => () => {
+    try {
+      graceful();
+    } catch {
+      kill(); // already gone, or the channel closed
+    }
+    const force = setTimeout(kill, 8000); // the proxy gives up on a graceful stop after 5 s by itself
+    return exited.finally(() => clearTimeout(force));
+  };
   if (BUNDLED_PROXY) {
     const child = utilityProcess.fork(path.join(ROOT, "dist", "server.mjs"), [], {
       serviceName: `${APP_NAME} proxy`,
@@ -233,16 +258,22 @@ function startProxy() {
     child.stdout?.pipe(log);
     child.stderr?.pipe(log);
     exited = new Promise((resolve) => child.once("exit", resolve));
-    handle = { stop: () => (child.kill(), exited) }; // SIGTERM: the proxy shuts down gracefully
+    handle = { stop: stopWith(() => (IS_WINDOWS ? child.postMessage({ type: "shutdown" }) : child.kill()), () => child.kill()) };
   } else {
     const log = fs.openSync(logFile, "a");
     const child = spawn("node", ["--env-file-if-exists=.env", "--import", "tsx", "src/server.ts"], {
       cwd: ROOT,
       env: childEnv,
-      stdio: ["ignore", log, log],
+      stdio: ["ignore", log, log, "ipc"], // IPC: the stop message on Windows; the proxy also stops if the app goes away
+      windowsHide: true, // no console window on Windows
     });
     exited = new Promise((resolve) => child.once("exit", resolve));
-    handle = { stop: () => (child.kill("SIGINT"), exited) }; // SIGINT: the proxy shuts down gracefully
+    handle = {
+      stop: stopWith(
+        () => (IS_WINDOWS ? child.send({ type: "shutdown" }, (error) => error && child.kill()) : child.kill("SIGINT")),
+        () => child.kill(),
+      ),
+    };
   }
   proxyChild = handle;
   exited.then(onExit);
@@ -544,7 +575,9 @@ function openSettings(section) {
     minWidth: 760,
     minHeight: 540,
     title: t("settingsTitle"),
-    titleBarStyle: "hiddenInset",
+    // macOS: the sidebar runs up under the traffic lights. Windows keeps its normal title bar (a hidden one would take
+    // the window buttons with it) and shows no menu bar.
+    ...(IS_MAC ? { titleBarStyle: "hiddenInset" } : { autoHideMenuBar: true }),
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#1c1c20" : "#f5f5f7",
     show: false,
     webPreferences: {
@@ -557,21 +590,29 @@ function openSettings(section) {
   lockDown(settingsWin.webContents);
   settingsWin.loadURL(`${SETTINGS_URL}${section ? `#${section}` : ""}`);
   settingsWin.once("ready-to-show", () => {
-    if (process.platform === "darwin") void app.dock?.show(); // so it shows up in Cmd+Tab while open
+    if (IS_MAC) void app.dock?.show(); // so it shows up in Cmd+Tab while open
     settingsWin.show();
-    app.focus({ steal: true });
+    // On Windows app.focus() would pick the app's topmost window, which is the pet.
+    if (IS_MAC) app.focus({ steal: true });
+    else settingsWin.focus();
   });
   settingsWin.on("closed", () => {
     settingsWin = undefined;
-    if (process.platform === "darwin") app.dock?.hide();
+    if (IS_MAC) app.dock?.hide();
   });
 }
 
 // --- menus -------------------------------------------------------------------------------------------------
 function createTray() {
-  const icon = nativeImage.createFromPath(path.join(ROOT, "assets", "trayTemplate.png"));
-  icon.setTemplateImage(true);
-  tray = new Tray(icon);
+  if (IS_MAC) {
+    const icon = nativeImage.createFromPath(path.join(ROOT, "assets", "trayTemplate.png"));
+    icon.setTemplateImage(true); // black and clear: the menu bar tints it
+    tray = new Tray(icon);
+  } else {
+    // The notification area shows colored icons; the .ico holds one size for each display scale.
+    tray = new Tray(path.join(ROOT, "assets", "tray.ico"));
+    tray.on("click", () => tray.popUpContextMenu()); // a left click opens the menu too, like the pet's right click
+  }
   updateTrayMenu();
 }
 
@@ -597,6 +638,11 @@ function updateTrayMenu() {
 }
 
 function setApplicationMenu() {
+  // Windows: no menu bar at all (copy and paste work in the settings window without one there).
+  if (!IS_MAC) {
+    Menu.setApplicationMenu(null);
+    return;
+  }
   // Needed for Cmd+C / Cmd+V in the settings window (the app has no Dock menu otherwise).
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
@@ -616,7 +662,7 @@ function setApplicationMenu() {
 }
 
 async function chooseAndInstallPet() {
-  app.focus({ steal: true });
+  if (IS_MAC) app.focus({ steal: true });
   const { canceled, filePaths } = await dialog.showOpenDialog({
     title: t("addPetTitle"),
     message: t("addPetMessage"),
@@ -1187,16 +1233,103 @@ ipcMain.handle("settings:reconnect", (event) => {
   return true;
 });
 
+// --- smoke test (CI) ---------------------------------------------------------------------------------------
+// TONARIN_SMOKE_TEST=<file> starts the app as usual, then checks that both pages ran their scripts, the proxy answers,
+// the Copilot runtime started (signed out is fine), the pet window follows its bubble and the tray icon exists. It
+// writes what it found to <file> as JSON and quits through the normal graceful shutdown. scripts/smoke-test.mjs runs
+// packaged builds this way on macOS and Windows. Nothing here runs without the variable.
+const SMOKE_TEST_FILE = process.env.TONARIN_SMOKE_TEST;
+const smokeProblems = [];
+if (SMOKE_TEST_FILE) {
+  app.on("web-contents-created", (_event, contents) => {
+    contents.on("console-message", (details, _level, message) => {
+      const text = String(details?.message ?? message ?? "");
+      if (/Uncaught|Failed to load module|SyntaxError/.test(text)) smokeProblems.push(`page error: ${text.slice(0, 300)}`);
+    });
+    contents.on("preload-error", (_e, _file, error) => smokeProblems.push(`preload failed: ${error?.message}`));
+    contents.on("render-process-gone", (_e, details) => smokeProblems.push(`page crashed: ${details?.reason}`));
+    contents.on("did-fail-load", (_e, code, description, url) => {
+      if (code !== -3) smokeProblems.push(`page did not load: ${code} ${description} ${url}`); // -3: aborted on purpose
+    });
+  });
+}
+
+async function runSmokeTest() {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const report = {
+    version: APP_VERSION,
+    platform: process.platform,
+    arch: process.arch,
+    electron: process.versions.electron,
+    packaged: app.isPackaged,
+    bundledProxy: BUNDLED_PROXY,
+  };
+  if (!settingsWin) openSettings();
+  // Wait for each page's own script to finish its first render (the renderers are ES modules behind pet://).
+  const probes = {
+    pet: [win, "({ character: document.documentElement.dataset.character ?? '', drawn: !!document.querySelector('#character > *'), platform: document.documentElement.dataset.platform ?? '' })"],
+    settings: [settingsWin, "({ sections: document.querySelectorAll('#nav .nav-item').length, platform: document.documentElement.dataset.platform ?? '' })"],
+  };
+  for (const [name, [window, probe]] of Object.entries(probes)) {
+    let result;
+    for (let attempt = 0; attempt < 60; attempt++) {
+      result = window && !window.isDestroyed() ? await window.webContents.executeJavaScript(probe).catch(() => undefined) : undefined;
+      if (result && (name === "pet" ? result.character && result.drawn : result.sections > 0)) break;
+      await wait(500);
+    }
+    report[name] = result ?? null;
+    if (!result || (name === "pet" ? !(result.character && result.drawn) : !result.sections)) smokeProblems.push(`the ${name} page did not render`);
+    else if (result.platform !== process.platform) smokeProblems.push(`the ${name} page thinks it runs on "${result.platform}"`);
+  }
+  // The proxy, and the Copilot runtime behind it (it can take a while to start).
+  let status;
+  for (let attempt = 0; attempt < 90 && (!status || status.copilot === "starting"); attempt++) {
+    if (attempt) await wait(1000);
+    status = await fetch(`http://127.0.0.1:${PORT}/v1/status`, { headers: { Authorization: `Bearer ${proxyKey()}` } })
+      .then((response) => (response.ok ? response.json() : undefined))
+      .catch(() => undefined);
+  }
+  report.proxy = { running: proxyRunning, managed: Boolean(proxyChild), status: status ?? null };
+  if (!proxyRunning || !status) smokeProblems.push("the proxy did not answer");
+  else if (!["ready", "signed-out"].includes(status.copilot)) smokeProblems.push(`the Copilot runtime did not start (${status.copilot})`);
+  // The window grows with the bubble and shrinks back.
+  if (win) {
+    const before = win.getBounds();
+    bubbleSpace = 240;
+    layoutWindow();
+    const open = win.getBounds();
+    const expected = computeLayout().bounds;
+    bubbleSpace = 0;
+    layoutWindow();
+    report.window = { before, open, expected };
+    if (open.height !== expected.height || open.width !== expected.width) smokeProblems.push("the pet window did not follow its bubble");
+  }
+  report.tray = Boolean(tray && !tray.isDestroyed());
+  if (!report.tray) smokeProblems.push("no tray icon");
+  report.problems = smokeProblems;
+  fs.writeFileSync(SMOKE_TEST_FILE, `${JSON.stringify(report, null, 2)}\n`);
+  console.log(`[smoke] ${smokeProblems.length ? `problems: ${smokeProblems.join("; ")}` : "all checks passed"}`);
+  app.quit();
+}
+
 // --- startup -----------------------------------------------------------------------------------------------
+app.on("second-instance", () => {
+  // Started again while running: show the pet if it was hidden, otherwise the settings.
+  if (!win) return;
+  if (!petVisible) setPetVisible(true);
+  else openSettings();
+});
+
 app.whenReady().then(async () => {
+  if (SECOND_INSTANCE) return; // quitting: the running copy takes over
   logToFile();
   watchEventLoop();
-  migrateFromPreviousName();
+  if (!process.env.TONARIN_USER_DATA) migrateFromPreviousName(); // only into the app's usual folder
   settings = new Settings(app.getPath("userData"));
-  t = translator(uiLanguage());
+  t = translator(uiLanguage(), process.platform);
   settings.on("change", (keys) => {
     if (keys.includes("language")) {
-      t = translator(uiLanguage());
+      t = translator(uiLanguage(), process.platform);
       setApplicationMenu();
       updateTrayMenu();
     }
@@ -1230,9 +1363,10 @@ app.whenReady().then(async () => {
   });
   session.defaultSession.setPermissionCheckHandler((webContents, permission) => permission === "media");
 
-  if (process.platform === "darwin") {
+  if (IS_MAC) {
     app.dock?.hide(); // a pet, not an app window: the menu bar icon and the pet's right-click menu are the controls
-    await systemPreferences.askForMediaAccess("microphone");
+    // A CI machine has nobody to answer the prompt; the smoke test does not need the microphone.
+    if (!SMOKE_TEST_FILE) await systemPreferences.askForMediaAccess("microphone");
   }
 
   setApplicationMenu();
@@ -1240,16 +1374,17 @@ app.whenReady().then(async () => {
   await ensureProxy();
   createPetWindow();
   if (geminiKeySource() === "none") openSettings("connection"); // first run: ask for the key
+  if (SMOKE_TEST_FILE) void runSmokeTest();
 
   // A display was unplugged or rearranged: keep the pet on a screen, with room for its bubble.
   for (const change of ["display-removed", "display-added", "display-metrics-changed"]) screen.on(change, () => layoutWindow());
 
-  // GitHub access tokens last 8 hours: renew them now if the Mac was off, then keep checking.
+  // GitHub access tokens last 8 hours: renew them now if the computer was off, then keep checking.
   void refreshGitHubTokens();
   setInterval(() => void refreshGitHubTokens(), GITHUB_CHECK_MS);
-  powerMonitor.on("resume", () => void refreshGitHubTokens()); // timers do not run while the Mac sleeps
+  powerMonitor.on("resume", () => void refreshGitHubTokens()); // timers do not run while the computer sleeps
 
-  // Nobody is listening while the Mac sleeps or is locked: let the pet sleep too (mic off, disconnected).
+  // Nobody is listening while the computer sleeps or is locked: let the pet sleep too (mic off, disconnected).
   powerMonitor.on("suspend", () => sendToPet("sleep"));
   powerMonitor.on("lock-screen", () => {
     screenLocked = true;

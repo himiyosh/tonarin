@@ -1218,11 +1218,24 @@ async function shutdown(): Promise<void> {
   await conversation?.session.disconnect().catch(() => {});
   await researchSession?.then((session) => session.disconnect()).catch(() => {});
   await client.stop().catch(() => {});
+  console.log("[proxy] stopped");
   process.exit(0);
 }
 process.on("SIGINT", shutdown);
 process.on("exit", stopWhisper); // never leave whisper-server running without the proxy
 process.on("SIGTERM", shutdown);
+// Windows has no signals a process can catch, so the desktop app asks for a graceful stop with a message: through the
+// utility process's parent port (packaged app) or the IPC channel of a `node` child (development run). Without that,
+// the Copilot runtime and MCP servers this proxy started could outlive it.
+type ParentPort = { on(event: "message", listener: (event: { data: unknown }) => void): void };
+const isStopMessage = (message: unknown): boolean => (message as { type?: unknown } | null)?.type === "shutdown";
+(process as NodeJS.Process & { parentPort?: ParentPort }).parentPort?.on("message", (event) => {
+  if (isStopMessage(event.data)) void shutdown();
+});
+process.on("message", (message) => {
+  if (isStopMessage(message)) void shutdown();
+});
+process.on("disconnect", () => void shutdown()); // the app that started us over IPC is gone
 
 copilotStarted = startCopilot().then(() => {
   if (!live || copilotState !== "ready") return;

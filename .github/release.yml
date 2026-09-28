@@ -1,0 +1,14 @@
+# Categories for GitHub's generated release notes: the "Generate release notes" button, and the Release workflow,
+# which takes only the New Contributors section from them. The notes themselves are written by hand in docs/releases/.
+changelog:
+  exclude:
+    authors:
+      - dependabot
+      - dependabot[bot]
+  categories:
+    - title: Product updates
+      labels: [enhancement]
+    - title: Bug fixes and polish
+      labels: [bug]
+    - title: Other changes
+      labels: ["*"]
