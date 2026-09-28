@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22.x, 24.x]
+    env:
+      # The Electron binary is only needed to run the app, not to check it.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Bundle the proxy
+        run: npm run build:proxy
+      - name: No secrets or local files tracked
+        run: |
+          set -e
+          bad=$(git ls-files | grep -E '(^|/)\.env$|(^|/)\.env\.[^e]|\.npmrc$|\.pem$|\.p12$|\.key$|(^|/)secrets\.json$|(^|/)CLAUDE\.md$|^logs/|^release/|^models/' || true)
+          if [ -n "$bad" ]; then echo "Files that must not be tracked:"; echo "$bad"; exit 1; fi
