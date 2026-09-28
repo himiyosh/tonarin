@@ -762,6 +762,58 @@ const MESSAGES = {
   },
 };
 
+/**
+ * Wording that differs on Windows: where secrets are kept, "this PC", Windows Settings. Keys not listed here use
+ * MESSAGES on every platform.
+ */
+const WINDOWS_MESSAGES = {
+  ja: {
+    "pet.micError":
+      "マイクが使えません。Windows の「設定」→「プライバシーとセキュリティ」→「マイク」で、マイクへのアクセスと「デスクトップ アプリがマイクにアクセスできるようにする」をオンにしてから、起動し直してください。",
+    "general.loginDesc": "Windows にサインインしたら自動でペットを起動します。",
+    "connection.geminiDesc":
+      "リアルタイムの会話に使います。キーは Windows のデータ保護 (DPAPI) で、あなたのアカウントだけが読めるように暗号化して保存し、画面には表示しません。",
+    "connection.statusKeychain": "設定済み (暗号化して保存)",
+    "connection.proxyDesc": "ペットと Gemini、Copilot の間を取り持つ、この PC の中だけで動くサーバーです。",
+    "auto.historyDesc": "自動実行でペットが話した内容や、Copilot の調査結果です。この PC の中にだけ保存されます (最新 100 件)。",
+    "mcp.preset.customHelp": "この PC で動かすコマンド (stdio) か、https の URL (Streamable HTTP) を指定します。信頼できるサーバーだけを追加してください。",
+    "mcp.transportStdio": "この PC でコマンドを動かす (stdio)",
+    "mcp.commandDesc": "実行ファイルのパス (npx のようなコマンド名も使えます)。~\\ はホームフォルダーです。",
+    "mcp.envDesc": "KEY=VALUE を 1 行に 1 つ。値は暗号化して保存され、この画面には戻りません。",
+    "mcp.headersDesc": "Name: value を 1 行に 1 つ (例: Authorization: Bearer ...)。暗号化して保存され、この画面には戻りません。",
+    "mcp.tokenDesc": "暗号化して保存します。",
+    "usage.billed.listeningDesc":
+      "Gemini 3.8 Live は常に聞き取るモデルで、Google は「聞いている間ずっと入力を課金する」と説明しています (音声入力は 1 分あたり約 $0.005)。開発時の測定では、無言の時間はやり取りの使用量に数えられていませんでした。「雑音への強さ」が標準か強めなら、声らしい音がした間だけ送るので、この分はさらに小さくなります。",
+    "usage.billed.sleep": "おやすみ、画面ロック、PC のスリープ",
+    "usage.today": "今日の使用量 (この PC)",
+  },
+  en: {
+    "pet.micError":
+      "I can't use the microphone. In Windows Settings > Privacy & security > Microphone, turn on microphone access and \"Let desktop apps access your microphone\", then restart.",
+    "general.loginDesc": "Start the pet when you sign in to Windows.",
+    "connection.geminiDesc":
+      "Used for real-time conversation. Encrypted with Windows data protection (DPAPI) so only your account can read it, and never shown on screen.",
+    "connection.statusKeychain": "Set (encrypted)",
+    "connection.proxyDesc": "A server that runs only on this PC and connects the pet with Gemini and Copilot.",
+    "auto.historyDesc": "What the pet said for your automations, and Copilot's results. Stored only on this PC (latest 100).",
+    "mcp.preset.customHelp": "Give a command that runs on this PC (stdio) or an https URL (Streamable HTTP). Only add servers you trust.",
+    "mcp.transportStdio": "Run a command on this PC (stdio)",
+    "mcp.commandDesc": "Path to the program (a command such as npx works too). ~\\ is your home folder.",
+    "mcp.envDesc": "One KEY=VALUE per line. Values are stored encrypted and never shown here again.",
+    "mcp.headersDesc": "One \"Name: value\" per line (for example Authorization: Bearer ...). Stored encrypted and never shown here again.",
+    "mcp.tokenDesc": "Stored encrypted.",
+    "usage.billed.listeningDesc":
+      "Gemini 3.8 Live always listens, and Google says input is billed the entire time it listens (audio input is about $0.005 per minute). In a test during development, silence did not show up in the per-exchange usage. With the Standard or Strong noise filter, audio is sent only while something voice-like is heard, so this part gets smaller still.",
+    "usage.billed.sleep": "Nap, screen lock, PC sleep",
+    "usage.today": "Today on this PC",
+  },
+};
+
+/** The OS the app runs on ("darwin" or "win32"), from the preload. Pages style themselves with <html data-platform>. */
+export const PLATFORM = globalThis.pet?.platform ?? "darwin";
+document.documentElement.dataset.platform = PLATFORM;
+const OVERRIDES = PLATFORM === "win32" ? WINDOWS_MESSAGES : { ja: {}, en: {} };
+
 let current = "ja";
 
 /** "auto" follows the system (the page's navigator.language, or a locale passed in). */
@@ -780,7 +832,7 @@ export function getLanguage() {
 }
 
 export function t(key, vars = {}) {
-  const text = MESSAGES[current][key] ?? MESSAGES.ja[key] ?? key;
+  const text = OVERRIDES[current][key] ?? MESSAGES[current][key] ?? OVERRIDES.ja[key] ?? MESSAGES.ja[key] ?? key;
   return text.replace(/\{(\w+)\}/g, (_, name) => (name in vars ? String(vars[name]) : `{${name}}`));
 }
 

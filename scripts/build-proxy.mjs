@@ -8,6 +8,7 @@
  * there, because it finds its platform runtime (@github/copilot-sdk-<platform>) relative to its own files.
  */
 import { copyFileSync, mkdirSync, rmSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 const root = new URL("../", import.meta.url);
@@ -17,8 +18,8 @@ rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
 
 const result = await build({
-  entryPoints: [new URL("src/server.ts", root).pathname],
-  outfile: new URL("server.mjs", dist).pathname,
+  entryPoints: [fileURLToPath(new URL("src/server.ts", root))], // file paths, also on Windows (C:\...)
+  outfile: fileURLToPath(new URL("server.mjs", dist)),
   bundle: true,
   platform: "node",
   format: "esm",
