@@ -68,10 +68,10 @@ jobs:
       # macOS builds are ad hoc signed (electron-builder.config.cjs); there is no Windows certificate yet.
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref || '' }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22.x
           cache: npm
@@ -84,7 +84,7 @@ jobs:
       - name: Start the packaged app once
         run: npm run smoke
       - name: Keep the files
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tonarin-${{ matrix.files }}
           path: |
