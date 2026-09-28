@@ -769,24 +769,24 @@ const MESSAGES = {
 const WINDOWS_MESSAGES = {
   ja: {
     "pet.micError":
-      "マイクが使えません。Windows の「設定」→「プライバシーとセキュリティ」→「マイク」で、マイクへのアクセスと「デスクトップ アプリがマイクにアクセスできるようにする」をオンにしてから、起動し直してください。",
-    "general.loginDesc": "Windows にサインインしたら自動でペットを起動します。",
-    "character.codexDesc": "%USERPROFILE%\\.codex\\pets にあるペットを読み込みます。ファイルはその場で読むだけで、コピーしません。",
+      "マイクを使用できません。Windows の「設定」→「プライバシーとセキュリティ」→「マイク」で、マイクへのアクセスと「デスクトップ アプリがマイクにアクセスできるようにする」をオンにし、Tonarin を再起動してください。",
+    "general.loginDesc": "Windows にサインインしたときに Tonarin を起動します。",
+    "character.codexDesc": "%USERPROFILE%\\.codex\\pets 内のペットを、コピーせずにそのまま読み込みます。",
     "connection.geminiDesc":
-      "リアルタイムの会話に使います。キーは Windows のデータ保護 (DPAPI) で、あなたのアカウントだけが読めるように暗号化して保存し、画面には表示しません。",
-    "connection.statusKeychain": "設定済み (暗号化して保存)",
-    "connection.proxyDesc": "ペットと Gemini、Copilot の間を取り持つ、この PC の中だけで動くサーバーです。",
-    "auto.historyDesc": "自動実行でペットが話した内容や、Copilot の調査結果です。この PC の中にだけ保存されます (最新 100 件)。",
-    "mcp.preset.customHelp": "この PC で動かすコマンド (stdio) か、https の URL (Streamable HTTP) を指定します。信頼できるサーバーだけを追加してください。",
-    "mcp.transportStdio": "この PC でコマンドを動かす (stdio)",
-    "mcp.commandDesc": "実行ファイルのパス (npx のようなコマンド名も使えます)。~\\ はホームフォルダーです。",
-    "mcp.envDesc": "KEY=VALUE を 1 行に 1 つ。値は暗号化して保存され、この画面には戻りません。",
-    "mcp.headersDesc": "Name: value を 1 行に 1 つ (例: Authorization: Bearer ...)。暗号化して保存され、この画面には戻りません。",
+      "リアルタイム音声会話に使用します。キーは Windows のデータ保護機能（DPAPI）で暗号化し、このアカウントでのみ読み取れるよう PC に保存します。画面には表示しません。",
+    "connection.statusKeychain": "設定済み（暗号化して保存）",
+    "connection.proxyDesc": "この PC 上で動作し、ペットと Gemini・GitHub Copilot の通信を中継します。",
+    "auto.historyDesc": "自動実行でペットが話した内容と、GitHub Copilot の調査結果を表示します。この PC に最新の 100 件を保存します。",
+    "mcp.preset.customHelp": "この PC 上で実行するコマンド（stdio）か、HTTPS の URL（Streamable HTTP）を指定します。信頼できるサーバーだけを追加してください。",
+    "mcp.transportStdio": "この PC でコマンドを実行（stdio）",
+    "mcp.commandDesc": "実行ファイルのパス、または npx などのコマンド名を指定します。~\\ はホームフォルダーを表します。",
+    "mcp.envDesc": "KEY=VALUE の形式で 1 行に 1 つ入力してください。値は暗号化して保存し、保存後はこの画面に表示しません。",
+    "mcp.headersDesc": "Name: value の形式で 1 行に 1 つ入力してください。値は暗号化して保存し、保存後はこの画面に表示しません。",
     "mcp.tokenDesc": "暗号化して保存します。",
     "usage.billed.listeningDesc":
-      "Gemini 3.8 Live は常に聞き取るモデルで、Google は「聞いている間ずっと入力を課金する」と説明しています (音声入力は 1 分あたり約 $0.005)。開発時の測定では、無言の時間はやり取りの使用量に数えられていませんでした。「雑音への強さ」が標準か強めなら、声らしい音がした間だけ送るので、この分はさらに小さくなります。",
-    "usage.billed.sleep": "おやすみ、画面ロック、PC のスリープ",
-    "usage.today": "今日の使用量 (この PC)",
+      "Gemini 3.8 Live は常時聞き取るモデルで、Google は「聞いている間ずっと入力として課金する」と説明しています（音声入力は 1 分あたり約 $0.005）。開発時の測定では、無言の時間はやり取りの使用量に含まれていませんでした。「雑音フィルター」が「標準」または「強め」なら、声らしい音がした間だけ送信するため、この分の料金を抑えられます。",
+    "usage.billed.sleep": "おやすみ・画面ロック・PC のスリープ",
+    "usage.today": "今日の使用量（この PC）",
   },
   en: {
     "pet.micError":

@@ -93,7 +93,7 @@ function resolveLanguage(setting, locale) {
 
 /** Wording that differs on Windows (the keyboard says Ctrl). Keys not listed use MESSAGES. */
 const WINDOWS = {
-  ja: { pinchHint: "ペットの上でピンチ (または Ctrl + スクロール) でも調整できます" },
+  ja: { pinchHint: "ペットの上でピンチ（または Ctrl + スクロール）しても調整できます" },
   en: { pinchHint: "You can also pinch on the pet (or Ctrl + scroll)" },
 };
 
