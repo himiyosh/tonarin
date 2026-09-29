@@ -1,5 +1,6 @@
 // Page wording per platform (pet/ui/i18n.js and pet/i18n.cjs): Windows gets no Mac-only words.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { test } from "node:test";
 
@@ -51,4 +52,16 @@ test("the main process says Ctrl on Windows and Control on a Mac", () => {
   assert.match(translator("ja", "win32")("pinchHint"), /Ctrl \+ スクロール/);
   assert.match(translator("en", "darwin")("pinchHint"), /Control \+ scroll/);
   assert.equal(translator("en", "win32")("quit"), "Quit");
+});
+
+test("news settings labels, failures and licensing credits exist in both languages", () => {
+  const source = readFileSync(new URL("../pet/ui/i18n.js", import.meta.url), "utf8");
+  const messages = source.slice(source.indexOf("const MESSAGES = {"), source.indexOf("const WINDOWS_MESSAGES = {"));
+  const japanese = messages.slice(messages.indexOf("\n  ja: {"), messages.indexOf("\n  en: {"));
+  const english = messages.slice(messages.indexOf("\n  en: {"));
+  const keys = (text) => [...new Set([...text.matchAll(/^\s+"(news\.[\w.]+)":/gm)].map((match) => match[1]))].sort();
+  assert.deepEqual(keys(japanese), keys(english));
+  for (const key of ["news.error.url", "news.error.feed", "news.empty", "news.hostLimit", "news.credits"]) {
+    assert.ok(keys(japanese).includes(key), `${key} is translated`);
+  }
 });

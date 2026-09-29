@@ -60,7 +60,7 @@ already have, and tells you the answer in its own words.
 |---|---|
 | **Conversation** | Real-time voice with Gemini Live, barge-in, captions of both sides, Japanese and English (UI and speech are set separately). |
 | **Copilot deep dives** | `ask_copilot` hands articles, comparisons, explanations and design questions to a sandboxed Copilot session. |
-| **Tech news** | Headlines from 12 curated RSS feeds (Japanese and English). The pet introduces them and Copilot reads the full article when you want more. |
+| **News** | Keep the 12 Japanese/English tech feeds as defaults; opt into Japanese public-agency updates and GOV.UK/NSF English news across general, business, science and health; or add your own public RSS/Atom site. Articles can only be read on authorized hosts. |
 | **Reminders and automations** | "Remind me in 20 minutes", a morning briefing, scheduled Copilot research, break nudges and keyword watch, with a history you can review. |
 | **Connected apps (MCP)** | Model Context Protocol servers become the pet's tools: your Mac's calendar (Google, iCloud, Exchange; macOS), Microsoft Learn, and GitHub (read-only, with **Sign in with GitHub**). |
 | **Noise filter** | Only voice-like sound reaches Gemini, so typing, fans or a door do not start a conversation. Three levels. |
@@ -205,6 +205,13 @@ Everything a user needs is in the settings window (menu bar or notification-area
 <kbd>⌘</kbd> <kbd>,</kbd> on a Mac): general, character, conversation and voice, automations, connected apps, news,
 connection, usage and cost. Settings are stored in `~/Library/Application Support/Tonarin/` on a Mac and in
 `%APPDATA%\Tonarin\` on Windows.
+
+In **Settings → News**, switch topics or individual sources on and off, or add a public HTTPS site or RSS/Atom URL.
+Tonarin discovers advertised feeds; sites without one cannot be added. Your original news choices remain unchanged,
+and new built-in topics are opt-in. For a personal source, only the **exact host you entered** can be read for article
+text: a feed hosted elsewhere does not authorize its article hosts. Verified Japanese built-ins beyond technology
+currently cover general/administrative updates only; add a public personal feed for other topics. See
+[news settings and source notes](docs/configuration.md#news-sources).
 
 Environment variables for development and for the standalone proxy are listed in
 [docs/configuration.md](docs/configuration.md).

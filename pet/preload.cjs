@@ -29,6 +29,11 @@ contextBridge.exposeInMainWorld("pet", {
     onChanged: (callback) => ipcRenderer.on("settings:changed", (_event, snapshot) => callback(snapshot)),
     onSection: (callback) => ipcRenderer.on("settings:section", (_event, section) => callback(section)),
     usage: () => ipcRenderer.invoke("settings:usage"),
+    news: {
+      add: (input) => ipcRenderer.invoke("settings:add-news-feed", input),
+      remove: (id) => ipcRenderer.invoke("settings:remove-news-feed", id),
+      sync: () => ipcRenderer.invoke("settings:sync-news-feeds"),
+    },
     github: {
       signIn: (input) => ipcRenderer.invoke("settings:github-signin", input),
       cancel: () => ipcRenderer.invoke("settings:github-cancel"),

@@ -53,6 +53,57 @@ its settings window is the source of truth there.
 The pet sends its own settings (language, voice, pause, noise filter, persona, feeds, Copilot on or off) with every
 connection, so these are only defaults for other clients.
 
+### News sources
+
+In **Settings → News**, switch public sources on individually or by topic (technology, general, business, science,
+living). The original 12 technology feeds remain the language-specific defaults; new built-in sources are opt-in,
+and existing saved selections are preserved. With the default selection, a personal site is enabled when its
+language matches the pet's speech language (English practice uses the English set). Up to 10 personal sites may
+be saved and up to 30 feeds selected.
+
+Add either a public HTTPS RSS/Atom URL or a public HTTPS site URL. Tonarin checks advertised
+`<link rel="alternate" type="application/rss+xml">` / Atom links and a few standard feed paths; it will not save
+a site without a readable feed. Removing the site revokes its article permission. A feed host is **not** an article
+host: only the exact hostname of the URL you entered is authorized for the added site's `read_article` calls.
+When the feed links to a different article host, the headline works but article text cannot be fetched; add that
+article site's own URL separately only if it also publishes RSS/Atom. The original built-ins retain their previous
+publisher-domain rules; new built-ins use only their listed article hosts.
+
+News fetching uses native HTTPS without a proxy, pins validated public DNS addresses to each socket and
+rechecks the connected IP. Redirects (at most four) undergo the same checks; article redirects must also stay
+on an authorized host. Requests to local/private/link-local networks (including IPv4-mapped IPv6) and compressed
+responses are refused. Feed/site responses are capped at 1 MiB, article HTML at 2 MiB, and requests at 12 seconds
+(15 seconds for discovery). XML DTDs and external entities are refused. Tool results mark headlines, summaries
+and article text as untrusted data, not instructions. Keyword watches continue to check the original 12 feeds
+and also check enabled new and personal sources.
+
+As of 2026-09-30, verified Japanese built-ins beyond technology cover **general/administrative updates only**.
+No Japanese business, science or living source with an independently verified applicable reuse permission and
+readable article host is bundled yet; for those topics, add a public RSS/Atom site yourself after checking its
+terms. The topic switches cover available sources from both languages, and the Japanese list shows which ones
+actually publish in Japanese.
+
+The added built-in feeds were checked on 2026-09-30 against the publishers' own feed and reuse pages. The original technology
+feeds and default selection are unchanged. GOV.UK explicitly offers its feeds to other applications and licenses
+most content under the OGL; sample articles in each selected category carry an OGL v3.0 footer. This app displays
+the required attribution in News settings and includes it in tool results. NSF describes its news RSS as
+headlines/summaries/links for standalone readers and permits reuse of most government-authored text; NSF's
+optional credit also appears in the app. Images, separately marked third-party works and content noted as
+exceptions are not licensed by these statements.
+The Digital Agency and MIC apply Japan's [Public Data License 1.0](https://www.digital.go.jp/resources/open_data/public_data_license_v1.0)
+to their published content unless marked otherwise. This permits commercial reuse with source attribution;
+Tonarin labels its summaries as its own adaptations and includes the original article URLs in tool results.
+
+| Category | Official HTTPS feed | Publisher's feed / article-rights evidence |
+|---|---|---|
+| General / administration (JA) | [Digital Agency updates](https://www.digital.go.jp/rss/news.xml) | [Official RSS listing](https://www.digital.go.jp/rss), [copyright/PDL1.0 policy](https://www.digital.go.jp/copyright-policy) |
+| General / administration (JA) | [MIC updates (Shift_JIS RDF)](https://www.soumu.go.jp/news.rdf) | [Official RSS listing](https://www.soumu.go.jp/menu_kyotsuu/rss_information.html), [copyright/PDL1.0 policy](https://www.soumu.go.jp/menu_kyotsuu/policy/tyosaku.html) |
+| General (EN) | [GOV.UK news](https://www.gov.uk/search/news-and-communications.atom) | [Feed use and OGL terms](https://www.gov.uk/help/terms-conditions), [OGL v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/) |
+| Business (EN) | [HM Treasury news](https://www.gov.uk/search/news-and-communications.atom?organisations%5B%5D=hm-treasury) | [GOV.UK feed and OGL terms](https://www.gov.uk/help/terms-conditions) |
+| Science (EN) | [Science department news](https://www.gov.uk/search/news-and-communications.atom?organisations%5B%5D=department-for-science-innovation-and-technology) | [GOV.UK feed and OGL terms](https://www.gov.uk/help/terms-conditions) |
+| Living / health (EN) | [Health department news](https://www.gov.uk/search/news-and-communications.atom?organisations%5B%5D=department-of-health-and-social-care) | [GOV.UK feed and OGL terms](https://www.gov.uk/help/terms-conditions) |
+| Science (EN) | [NSF news](https://www.nsf.gov/rss/rss_www_news.xml) | [Official RSS listing](https://www.nsf.gov/rss), [text reuse policy](https://www.nsf.gov/policies/digital) |
+
 ### Pet
 
 | Variable | Default | Description |
