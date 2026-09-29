@@ -231,6 +231,7 @@ input[type="password"], input[type="text"].key { width: 300px; font-family: ui-m
 .preview .thinking-dots, .preview .listen-rings, .preview .sleepy-eyes { display: none; }
 
 /* news sources */
+#section-news .row .label .title, #section-news .message { overflow-wrap: anywhere; }
 #section-news .row .label .desc { overflow-wrap: anywhere; }
 #section-news .row .control { flex-wrap: wrap; justify-content: flex-end; }
 #section-news .row.stack > label { font-weight: 500; }
@@ -245,6 +246,7 @@ input[type="url"].news-url {
   border: 1px solid var(--line);
   border-radius: 7px;
 }
+input[type="url"].news-url::placeholder { color: var(--muted); opacity: 1; }
 .news-add-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .news-add-controls select { flex: 1 1 150px; min-width: 0; }
 .news-host-note { max-width: 720px; margin: 10px 4px 0; overflow-wrap: anywhere; }
