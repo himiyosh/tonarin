@@ -3,12 +3,13 @@
  * encrypted with Electron safeStorage (backed by the macOS keychain, or DPAPI for the Windows account). Nothing here
  * is read from .env, except as a fallback the caller decides on (development setups keep working).
  */
-const { safeStorage } = require("electron");
 const { EventEmitter } = require("node:events");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const catalog = require("../src/catalog.json");
+// Plain settings can be loaded by Node tests without downloading Electron; only secret operations need its native API.
+const electronStorage = () => require("electron").safeStorage;
 
 const LANGUAGES = ["auto", "ja", "en"];
 const FEED_IDS = new Set(catalog.feeds.map((feed) => feed.id));
@@ -175,7 +176,9 @@ class Settings extends EventEmitter {
   }
 
   getSecret(name) {
-    if (!this.secrets[name] || !safeStorage.isEncryptionAvailable()) return undefined;
+    if (!this.secrets[name]) return undefined;
+    const safeStorage = electronStorage();
+    if (!safeStorage.isEncryptionAvailable()) return undefined;
     try {
       return safeStorage.decryptString(Buffer.from(this.secrets[name], "base64"));
     } catch {
@@ -186,6 +189,7 @@ class Settings extends EventEmitter {
   setSecret(name, value) {
     if (!isSecretName(name)) throw new Error(`Unknown secret: ${name}`);
     if (value) {
+      const safeStorage = electronStorage();
       if (!safeStorage.isEncryptionAvailable()) throw new Error("Secure storage (keychain) is not available");
       this.secrets[name] = safeStorage.encryptString(value).toString("base64");
     } else {

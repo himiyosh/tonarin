@@ -12,7 +12,8 @@ import {
 } from "../src/news.ts";
 import { fetchPublicHttps, isPublicAddress, publicHttpsUrl } from "../src/news-network.ts";
 
-const { Settings } = createRequire(import.meta.url)("../pet/settings.cjs");
+const require = createRequire(import.meta.url);
+const { Settings } = require("../pet/settings.cjs");
 const PUBLIC_IP = "93.184.216.34";
 const RSS = `<?xml version="1.0"?><rss version="2.0"><channel><title>News</title>
   <item><title>Copilot launches</title><link>https://www.itmedia.co.jp/news/articles/example</link>
@@ -259,6 +260,10 @@ test("saved settings migrate custom IDs, preserve defaults and reject malformed 
   } finally {
     rmSync(dir, { recursive: true });
   }
+});
+
+test("loading plain news settings does not require Electron's native binary", () => {
+  assert.equal(require.cache[require.resolve("electron")], undefined);
 });
 
 test("new English topics are opt-in and official reuse credit travels with headlines and articles", async () => {
