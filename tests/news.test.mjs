@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { afterEach, test } from "node:test";
 import {
-  CATALOG, FEED_IDS, asUntrustedNewsData, configureNewsSources, discoverNewsFeed, enabledFeedIds,
+  CATALOG, FEED_IDS, asUntrustedNewsData, checkKeywordSources, configureNewsSources, discoverNewsFeed, enabledFeedIds,
   fetchArticle, fetchHeadlines, isAllowedUrl, keywordFeedIds, newsToolsFor,
 } from "../src/news.ts";
 import { fetchPublicHttps, isPublicAddress, publicHttpsUrl } from "../src/news-network.ts";
@@ -496,26 +496,57 @@ test("the Japanese government RDF feed decodes Shift_JIS and carries PDL1.0 attr
   assert.equal(isAllowedUrl(new URL("https://sub.www.soumu.go.jp/news/item")), false);
 });
 
-test("language defaults and keyword watches include enabled new/custom feeds without losing the legacy 12", async () => {
+test("keyword watches follow language defaults, explicit toggles and the all-off selection", async () => {
   const old = [...new Set(Object.values(CATALOG.defaultFeeds).flat())];
   assert.equal(old.length, 12);
   const japanese = custom();
   const english = { ...custom("custom-87654321-4321-4321-4321-abcdefabcdef", "en"),
     siteUrl: "https://english.example.org/", siteHost: "english.example.org", url: "https://feeds.example.org/english.xml" };
   configureNewsSources({ customFeeds: [japanese, english], feeds: null, speechLanguage: "ja" });
-  assert.ok(enabledFeedIds("ja").includes(japanese.id));
-  assert.ok(!enabledFeedIds("ja").includes(english.id));
-  assert.ok(enabledFeedIds("en").includes(english.id), "English practice uses the English source set");
-  assert.ok(!enabledFeedIds("en").includes(japanese.id));
+  assert.deepEqual(keywordFeedIds(), [...CATALOG.defaultFeeds.ja, japanese.id]);
+  assert.deepEqual(enabledFeedIds("en"), [...CATALOG.defaultFeeds.en, english.id], "English practice uses the English defaults");
   assert.match(await newsToolsFor("ja")[0].handler({ feed: english.id }), /Unknown or disabled/);
   assert.match(await newsToolsFor("en")[0].handler({ feed: japanese.id }), /Unknown or disabled/);
   assert.match(await newsToolsFor("en")[0].handler({ feed: "" }), /Unknown or disabled/);
   assert.equal(isAllowedUrl(new URL("https://english.example.org/story"), enabledFeedIds("en")), true);
   assert.equal(isAllowedUrl(new URL("https://english.example.org/story"), enabledFeedIds("ja")), false);
+  configureNewsSources({ customFeeds: [japanese, english], feeds: null, speechLanguage: "en" });
+  assert.deepEqual(keywordFeedIds(), [...CATALOG.defaultFeeds.en, english.id], "switching languages replaces the defaults");
+
   const newBuiltIn = FEED_IDS.find((id) => !old.includes(id));
   assert.ok(newBuiltIn, "a new built-in feed is available");
-  configureNewsSources({ customFeeds: [japanese], feeds: [newBuiltIn, japanese.id], speechLanguage: "ja" });
-  assert.deepEqual(new Set(keywordFeedIds()), new Set([...old, newBuiltIn, japanese.id]));
-  configureNewsSources({ customFeeds: [], feeds: [], speechLanguage: "ja" });
-  assert.deepEqual(new Set(keywordFeedIds()), new Set(old));
+  configureNewsSources({ customFeeds: [japanese, english], feeds: [newBuiltIn, japanese.id], speechLanguage: "ja" });
+  assert.deepEqual(keywordFeedIds(), [newBuiltIn, japanese.id], "off defaults and an unselected personal site stay off");
+  configureNewsSources({ customFeeds: [japanese, english], feeds: [newBuiltIn, japanese.id], speechLanguage: "en" });
+  assert.deepEqual(keywordFeedIds(), [newBuiltIn, japanese.id], "an explicit selection survives language switches");
+  configureNewsSources({ customFeeds: [japanese, english], feeds: [english.id], speechLanguage: "ja" });
+  assert.deepEqual(keywordFeedIds(), [english.id], "a selected personal site works across speech languages");
+
+  configureNewsSources({ customFeeds: [japanese, english], feeds: [], speechLanguage: "ja" });
+  assert.deepEqual(keywordFeedIds(), []);
+  const noNetwork = fakeNetwork({});
+  assert.deepEqual(await checkKeywordSources(noNetwork.network), { kind: "no-sources" });
+  assert.deepEqual(noNetwork.lookups, [], "all-off skips even DNS resolution");
+  assert.deepEqual(noNetwork.requests, [], "all-off never contacts a news site");
+});
+
+test("scheduled keyword checks fetch only selected built-in and personal feeds with their result shapes", async () => {
+  const builtIn = CATALOG.feeds.find((feed) => feed.id === "digital_agency");
+  assert.ok(builtIn);
+  const selected = custom();
+  const unselected = { ...custom("custom-87654321-4321-4321-4321-abcdefabcdef", "en"),
+    siteUrl: "https://english.example.org/", siteHost: "english.example.org", url: "https://feeds.example.org/english.xml" };
+  configureNewsSources({ customFeeds: [selected, unselected], feeds: [builtIn.id, selected.id], speechLanguage: "en" });
+  const stub = fakeNetwork({ [builtIn.url]: { body: RSS }, [selected.url]: { body: ATOM } });
+  const checked = await checkKeywordSources(stub.network);
+  assert.equal(checked.kind, "results");
+  assert.deepEqual(Object.keys(checked), ["kind", "feeds", "results"]);
+  assert.deepEqual(checked.feeds, [builtIn.id, selected.id]);
+  assert.deepEqual(stub.requests.map((request) => request.url), [builtIn.url, selected.url]);
+  assert.deepEqual(checked.results.map((result) => result.status === "fulfilled"
+    ? { status: result.status, feed: result.value.feed, source: result.value.source, titles: result.value.items.map((item) => item.title) }
+    : { status: result.status }), [
+    { status: "fulfilled", feed: builtIn.id, source: builtIn.name, titles: ["Copilot launches"] },
+    { status: "fulfilled", feed: selected.id, source: selected.name, titles: ["New telescope"] },
+  ]);
 });
