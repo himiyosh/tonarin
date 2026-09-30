@@ -1647,10 +1647,10 @@ async function loadUsage() {
 /** What the pet is doing now, in billing terms. */
 function currentBillingState() {
   const pet = snap.pet ?? {};
-  if (pet.sleeping) return { key: "sleeping", pill: "ok" };
-  if (pet.conn !== "ready") return { key: "offline", pill: "ok" };
-  if (pet.muted) return { key: "muted", pill: "ok" };
-  return { key: "listening", pill: "warn" };
+  if (pet.sleeping) return "sleeping";
+  if (pet.conn !== "ready") return "offline";
+  if (pet.muted) return "muted";
+  return "listening";
 }
 
 function usageRow(title, value) {
@@ -1724,26 +1724,16 @@ function sectionUsage() {
     days: el("div", { class: "group" }),
     prices: el("p", { class: "lead small" }),
   };
-  const stateTitle = el("div", { class: "title" });
-  const stateDesc = el("div", { class: "desc" });
-  const statePill = el("span", { class: "pill" });
+  const stateTitle = el("h3");
+  const stateDesc = el("p");
+  const stateStatus = el("span", { class: "usage-explainer-status" });
   sync(() => {
     const state = currentBillingState();
-    stateTitle.textContent = t(`usage.state.${state.key}`);
-    stateDesc.textContent = t(`usage.state.${state.key}Desc`);
-    statePill.className = `pill ${state.pill}`;
-    statePill.textContent = t(`usage.state.${state.key}Pill`);
+    stateTitle.textContent = t(`usage.state.${state}`);
+    stateDesc.textContent = t(`usage.state.${state}Desc`);
+    stateStatus.textContent = t(`usage.state.${state}Pill`);
   });
-  const BILLED = [
-    ["talk", "warn"],
-    ["listening", "warn"],
-    ["mute", "ok"],
-    ["sleep", "ok"],
-    ["scheduled", "warn"],
-    ["quit", "ok"],
-    ["copilot", "idle"],
-    ["data", "ok"],
-  ];
+  const BILLED = ["talk", "listening", "mute", "sleep", "scheduled", "quit", "copilot", "data"];
   const link = (key, target) => el("button", { class: "link", type: "button", text: t(key), onclick: () => api.open(target) });
   queueMicrotask(() => void loadUsage());
   return [
@@ -1751,17 +1741,18 @@ function sectionUsage() {
     el("p", { class: "lead", text: t("usage.lead") }),
     usageRefs.notice,
     el("h2", { text: t("usage.now") }),
-    el("div", { class: "group" }, el("div", { class: "row" }, el("div", { class: "label" }, stateTitle, stateDesc), el("div", { class: "control" }, statePill))),
-    el("h2", { text: t("usage.billed") }),
+    el("div", { class: "usage-now" }, el("div", { class: "usage-explainer-head" }, stateTitle, stateStatus), stateDesc),
+    el("h2", { id: "usage-billed-heading", text: t("usage.billed") }),
+    el("p", { class: "usage-explainer-intro", text: t("usage.billed.intro") }),
     el(
-      "div",
-      { class: "group" },
-      BILLED.map(([key, pill]) =>
+      "ul",
+      { class: "usage-explainer", "aria-labelledby": "usage-billed-heading" },
+      BILLED.map((key) =>
         el(
-          "div",
-          { class: "row" },
-          el("div", { class: "label" }, el("div", { class: "title", text: t(`usage.billed.${key}`) }), el("div", { class: "desc", text: t(`usage.billed.${key}Desc`) })),
-          el("div", { class: "control" }, el("span", { class: `pill ${pill}`, text: t(`usage.billed.${key}Pill`) })),
+          "li",
+          {},
+          el("div", { class: "usage-explainer-head" }, el("h3", { text: t(`usage.billed.${key}`) }), el("span", { class: "usage-explainer-status", text: t(`usage.billed.${key}Pill`) })),
+          el("p", { text: t(`usage.billed.${key}Desc`) }),
         ),
       ),
     ),
