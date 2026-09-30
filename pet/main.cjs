@@ -1501,15 +1501,24 @@ async function runSmokeTest() {
           !report.mailMock.flow.offAgain) {
         smokeProblems.push("the local mock authorization steps could not return safely to off");
       }
+      const beforeZoom = await settingsWin.webContents.executeJavaScript("window.innerWidth");
       settingsWin.webContents.setZoomFactor(2);
-      report.mailMock.zoom200 = await settingsWin.webContents.executeJavaScript(`(() => {
-        const content = document.getElementById("content");
-        return {
-          stacked: getComputedStyle(document.querySelector(".app")).flexDirection === "column",
-          fits: content.scrollWidth <= content.clientWidth + 1,
-        };
-      })()`);
-      if (!report.mailMock.zoom200.stacked || !report.mailMock.zoom200.fits) {
+      for (let attempt = 0; attempt < 20; attempt++) {
+        await wait(50); // Chromium applies zoom asynchronously on CI.
+        report.mailMock.zoom200 = await settingsWin.webContents.executeJavaScript(`(() => {
+          const content = document.getElementById("content");
+          return {
+            viewport: window.innerWidth,
+            stacked: getComputedStyle(document.querySelector(".app")).flexDirection === "column",
+            fits: content.scrollWidth <= content.clientWidth + 1,
+          };
+        })()`);
+        if (report.mailMock.zoom200.viewport < beforeZoom * 0.75) break;
+      }
+      report.mailMock.zoom200.before = beforeZoom;
+      if (settingsWin.webContents.getZoomFactor() < 1.9 ||
+          report.mailMock.zoom200.viewport >= beforeZoom * 0.75 || !report.mailMock.zoom200.fits ||
+          (report.mailMock.zoom200.viewport <= 700 && !report.mailMock.zoom200.stacked)) {
         smokeProblems.push("the mock mail settings overflow at 200% text scaling");
       }
     } catch (error) {
