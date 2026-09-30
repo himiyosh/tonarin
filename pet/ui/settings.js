@@ -23,13 +23,32 @@ const ICONS = {
   usage: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M14.6 9.3c-.5-.9-1.5-1.4-2.6-1.4-1.5 0-2.6.8-2.6 1.9 0 1.2 1.1 1.7 2.6 2s2.6.8 2.6 2-1.1 2-2.6 2c-1.2 0-2.2-.6-2.7-1.5M12 6.1v1.8M12 16.1v1.8"/></svg>',
   about: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.6v.2"/></svg>',
 };
-const OSS = ["Electron", "ws", "@github/copilot-sdk", "@modelcontextprotocol/client", "@mozilla/readability", "linkedom", "rss-parser", "zod", "tsx", "TypeScript"];
+const OSS = ["Electron", "ws", "@github/copilot-sdk", "@modelcontextprotocol/client", "@mozilla/readability", "linkedom", "robots-parser", "rss-parser", "zod", "tsx", "TypeScript"];
 
 let snap;
 let current = SECTIONS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "general";
 let syncers = []; // functions that refresh controls from the latest snapshot without rebuilding them
 let codexPets = [];
 const svgCache = new Map();
+const NEWS_CATEGORIES = ["general", "business", "science", "lifestyle", "technology"];
+const NEWS_ERRORS = new Set(["url", "address", "dns", "network", "timeout", "http", "size", "redirect", "encoding", "feed", "config", "rights", "duplicate", "limit", "selection"]);
+const NEWS_CREDIT_LINKS = {
+  "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/": "news-ogl",
+  "https://www.nsf.gov/policies/digital": "news-nsf",
+  "https://www.digital.go.jp/copyright-policy": "news-digital-policy",
+  "https://www.soumu.go.jp/menu_kyotsuu/policy/tyosaku.html": "news-soumu-policy",
+  "https://www.pref.osaka.lg.jp/o070050/koho/information/use.html": "news-osaka-policy",
+};
+let newsFeedback;
+let newsMessage;
+
+function newsSay(key, type = "ok", vars = {}) {
+  newsFeedback = { key, type, vars };
+  if (newsMessage) {
+    newsMessage.className = `message ${type}`;
+    newsMessage.textContent = t(key, vars);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Small DOM helpers (textContent only: nothing from settings is parsed as HTML)
@@ -319,32 +338,222 @@ function sectionVoice() {
 }
 
 function sectionNews() {
-  const enabled = () => snap.values.feeds ?? snap.catalog.defaultFeeds[snap.speechLanguage];
+  const allFeeds = () => [...snap.catalog.feeds, ...snap.values.customFeeds];
+  const enabled = () => snap.values.feeds ?? [
+    ...snap.catalog.defaultFeeds[snap.speechLanguage],
+    ...snap.values.customFeeds.filter((feed) => feed.language === snap.speechLanguage).map((feed) => feed.id),
+  ];
+  const inputs = [];
+  const unavailable = new Set();
+  let saving = false;
+  const updateSelection = async (next) => {
+    if (saving) return;
+    if (next !== null && next.length > 30) {
+      newsSay("news.error.selection", "error");
+      for (const fn of syncers) fn();
+      return;
+    }
+    saving = true;
+    for (const input of inputs) input.disabled = true;
+    try {
+      onSnapshot(await api.set({ feeds: next }));
+      newsSay("news.updated");
+    } catch {
+      newsSay("news.changeFailed", "error");
+      onSnapshot(await api.get());
+    } finally {
+      saving = false;
+      for (const input of inputs) input.disabled = unavailable.has(input);
+      for (const fn of syncers) fn();
+    }
+  };
+  const selection = (ids, checked) => {
+    const chosen = new Set(enabled());
+    for (const id of ids) checked ? chosen.add(id) : chosen.delete(id);
+    return allFeeds().map((feed) => feed.id).filter((id) => chosen.has(id));
+  };
   const feedRow = (feed) => {
     const input = el("input", {
       type: "checkbox",
       role: "switch",
-      onchange: () => {
-        const set = new Set(enabled());
-        if (input.checked) set.add(feed.id);
-        else set.delete(feed.id);
-        save({ feeds: snap.catalog.feeds.map((f) => f.id).filter((id) => set.has(id)) });
-      },
+      "aria-label": t("news.toggle", { name: feed.name }),
+      onchange: () => void updateSelection(selection([feed.id], input.checked)),
     });
+    inputs.push(input);
     sync(() => (input.checked = enabled().includes(feed.id)));
-    return row(feed.name, feed.hosts.join(", "), el("label", { class: "switch" }, input, el("span", { class: "track" })));
+    const details = [
+      t(`news.category.${feed.category}`),
+      "siteHost" in feed ? t("news.siteHost", { host: feed.siteHost }) : feed.hosts.join(", "),
+      ...(!("siteHost" in feed) && feed.articleAccess === "feed-only" ? [t("news.feedOnly")] : []),
+      ...("siteHost" in feed && new URL(feed.url).hostname !== feed.siteHost
+        ? [t("news.feedHost", { host: new URL(feed.url).hostname })] : []),
+    ].join(" · ");
+    const controls = [el("label", { class: "switch" }, input, el("span", { class: "track" }))];
+    if ("siteHost" in feed) {
+      controls.push(el("button", {
+        class: "btn small danger",
+        type: "button",
+        text: t("news.remove"),
+        "aria-label": `${t("news.remove")} ${feed.name}`,
+        onclick: async (event) => {
+          if (!window.confirm(t("news.removeConfirm", { name: feed.name }))) return;
+          const button = event.currentTarget;
+          button.disabled = true;
+          try {
+            const result = await api.news.remove(feed.id);
+            if (result.ok) newsFeedback = { key: "news.removed", type: "ok", vars: { name: feed.name } };
+            if (result.snapshot) onSnapshot(result.snapshot);
+            if (!result.ok) newsSay(result.saved ? "news.applyFailed" : "news.changeFailed", "error");
+          } catch {
+            newsSay("news.changeFailed", "error");
+          } finally {
+            button.disabled = false;
+          }
+        },
+      }));
+    }
+    return row(feed.name, details, ...controls);
+  };
+  const categoryRow = (category) => {
+    const feeds = allFeeds().filter((feed) => feed.category === category);
+    const count = el("div", { class: "desc" });
+    const input = el("input", {
+      type: "checkbox",
+      role: "switch",
+      disabled: feeds.length === 0,
+      "aria-label": t(`news.category.${category}`),
+      onchange: () => void updateSelection(selection(feeds.map((feed) => feed.id), input.checked)),
+    });
+    if (!feeds.length) unavailable.add(input);
+    inputs.push(input);
+    sync(() => {
+      const selected = feeds.filter((feed) => enabled().includes(feed.id)).length;
+      input.checked = feeds.length > 0 && selected === feeds.length;
+      input.indeterminate = selected > 0 && selected < feeds.length;
+      count.textContent = t("news.categoryCount", { selected, total: feeds.length });
+    });
+    return el("div", { class: "row" },
+      el("div", { class: "label" }, el("div", { class: "title", text: t(`news.category.${category}`) }), count),
+      el("div", { class: "control" }, el("label", { class: "switch" }, input, el("span", { class: "track" }))),
+    );
+  };
+  const builtInRows = (language) => {
+    const feeds = snap.catalog.feeds.filter((feed) => feed.language === language);
+    return [
+      ...feeds.map(feedRow),
+      ...NEWS_CATEGORIES.filter((category) => !feeds.some((feed) => feed.category === category)).map((category) => {
+        const emptyRow = row(t(`news.category.${category}`), t("news.noCandidates"));
+        emptyRow.dataset.newsEmptyCategory = category;
+        return emptyRow;
+      }),
+    ];
   };
   const defaultsNote = el("div", { class: "notice info", text: t("news.usingDefaults") });
   sync(() => (defaultsNote.hidden = snap.values.feeds !== null));
+  const empty = el("div", { class: "notice warn news-empty", text: t("news.empty") });
+  sync(() => (empty.hidden = enabled().length !== 0));
+  const syncNotice = el("div", { class: "notice warn" });
+  const syncReason = el("div");
+  const retry = el("button", {
+    class: "btn small",
+    type: "button",
+    text: t("news.retry"),
+    onclick: async () => {
+      retry.disabled = true;
+      retry.textContent = t("news.retrying");
+      try {
+        const result = await api.news.sync();
+        if (result.snapshot) onSnapshot(result.snapshot);
+        newsSay(result.ok ? "news.synced" : "news.applyFailed", result.ok ? "ok" : "error");
+      } catch {
+        newsSay("news.applyFailed", "error");
+      } finally {
+        retry.disabled = false;
+        retry.textContent = t("news.retry");
+      }
+    },
+  });
+  syncNotice.append(el("div", { text: t("news.applyFailed") }), syncReason, retry);
+  sync(() => {
+    syncNotice.hidden = !snap.newsSyncError;
+    syncReason.textContent = NEWS_ERRORS.has(snap.newsSyncCode) ? t(`news.error.${snap.newsSyncCode}`) : "";
+  });
+  newsMessage = el("div", { class: "message", role: "status", "aria-live": "polite" });
+  sync(() => {
+    if (newsFeedback) newsSay(newsFeedback.key, newsFeedback.type, newsFeedback.vars);
+  });
+  const url = el("input", {
+    type: "url", class: "news-url", maxlength: "2048", required: true, spellcheck: false, autocomplete: "url",
+    placeholder: t("news.sitePlaceholder"), "aria-label": t("news.siteUrl"),
+  });
+  const language = el("select", { "aria-label": t("news.siteLanguage") },
+    ["ja", "en"].map((id) => el("option", { value: id, text: t(`lang.${id}`) })));
+  language.value = snap.speechLanguage;
+  const category = el("select", { "aria-label": t("news.siteCategory") },
+    NEWS_CATEGORIES.map((id) => el("option", { value: id, text: t(`news.category.${id}`) })));
+  const addButton = el("button", {
+    class: "btn primary", type: "button", text: t("news.add"),
+    onclick: async () => {
+      if (!/^https:\/\//i.test(url.value.trim()) || !url.checkValidity()) {
+        newsSay("news.error.url", "error");
+        url.focus();
+        return;
+      }
+      addButton.disabled = true;
+      addButton.textContent = t("news.adding");
+      try {
+        const result = await api.news.add({ url: url.value.trim(), language: language.value, category: category.value });
+        if (result.ok) newsFeedback = { key: "news.added", type: "ok", vars: { name: result.feed.name } };
+        if (result.snapshot) onSnapshot(result.snapshot);
+        if (!result.ok) {
+          const key = NEWS_ERRORS.has(result.code) ? `news.error.${result.code}` : "news.addFailed";
+          newsSay(result.saved ? "news.applyFailed" : key, "error", { message: result.message ?? "" });
+        }
+      } catch (error) {
+        newsSay("news.addFailed", "error", { message: error instanceof Error ? error.message : String(error) });
+      } finally {
+        addButton.disabled = false;
+        addButton.textContent = t("news.add");
+      }
+    },
+  });
+  const credits = [...new Map(snap.catalog.feeds.filter((feed) => feed.attribution)
+    .map((feed) => [feed.attribution.url, feed.attribution])).values()];
   return [
     el("h1", { text: t("news.title") }),
     el("p", { class: "lead", text: t("news.desc") }),
     defaultsNote,
+    syncNotice,
+    empty,
+    el("h2", { text: t("news.categories") }),
+    el("p", { class: "lead small", text: t("news.categoryDesc") }),
+    el("div", { class: "group" }, NEWS_CATEGORIES.map(categoryRow)),
+    el("h2", { text: t("news.addTitle") }),
+    el("p", { class: "lead small", text: t("news.addDesc") }),
+    el("div", { class: "group" },
+      el("div", { class: "row stack" },
+        el("label", { class: "title", text: t("news.siteUrl") }, url),
+        el("div", { class: "news-add-controls" }, language, category, addButton),
+        newsMessage,
+      )),
+    el("p", { class: "lead small news-host-note", text: t("news.hostLimit") }),
+    el("h2", { text: t("news.custom") }),
+    el("div", { class: "group" },
+      snap.values.customFeeds.length ? snap.values.customFeeds.map(feedRow) : el("div", { class: "empty", text: t("news.customEmpty") })),
     el("h2", { text: t("news.ja") }),
-    el("div", { class: "group" }, snap.catalog.feeds.filter((f) => f.language === "ja").map(feedRow)),
+    el("div", { class: "group" }, builtInRows("ja")),
     el("h2", { text: t("news.en") }),
-    el("div", { class: "group" }, snap.catalog.feeds.filter((f) => f.language === "en").map(feedRow)),
-    el("div", { class: "actions spaced" }, el("button", { class: "btn", type: "button", text: t("news.reset"), onclick: () => save({ feeds: null }) })),
+    el("div", { class: "group" }, builtInRows("en")),
+    ...(credits.length ? [
+      el("h2", { text: t("news.credits") }),
+      el("div", { class: "group" }, credits.map((credit) =>
+        row(credit.text, null,
+          NEWS_CREDIT_LINKS[credit.url]
+            ? el("button", { class: "link", type: "button", text: t("news.policy"), onclick: () => api.open(NEWS_CREDIT_LINKS[credit.url]) })
+            : null),
+      )),
+    ] : []),
+    el("div", { class: "actions spaced" }, el("button", { class: "btn", type: "button", text: t("news.reset"), onclick: () => void updateSelection(null) })),
   ];
 }
 
@@ -1625,8 +1834,9 @@ function go(id, { keepScroll = false } = {}) {
 function onSnapshot(next) {
   if (!next) return;
   const languageChanged = !snap || snap.uiLanguage !== next.uiLanguage;
+  const sourcesChanged = !snap || JSON.stringify(snap.values.customFeeds) !== JSON.stringify(next.values.customFeeds);
   snap = next;
-  if (languageChanged) {
+  if (languageChanged || sourcesChanged) {
     const scroll = content.scrollTop;
     renderAll();
     content.scrollTop = scroll;

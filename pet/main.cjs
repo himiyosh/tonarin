@@ -98,6 +98,11 @@ const EXTERNAL_LINKS = {
   "live-billing": "https://ai.google.dev/gemini-api/docs/live-api/best-practices",
   "ai-studio-usage": "https://aistudio.google.com/usage",
   "ai-studio-spend": "https://aistudio.google.com/spend",
+  "news-ogl": "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+  "news-nsf": "https://www.nsf.gov/policies/digital",
+  "news-digital-policy": "https://www.digital.go.jp/copyright-policy",
+  "news-soumu-policy": "https://www.soumu.go.jp/menu_kyotsuu/policy/tyosaku.html",
+  "news-osaka-policy": "https://www.pref.osaka.lg.jp/o070050/koho/information/use.html",
 };
 
 // --- environment and .env (development fallback) -----------------------------------------------------------
@@ -404,25 +409,62 @@ function onProxyEvent(event) {
 
 /** The settings window manages automations through here: main holds the proxy key, the page never sees it. */
 const automationsRequest = (...args) => proxyRequest(...args);
-async function proxyRequest(method, pathname, body) {
-  if (!proxyRunning) return { ok: false, message: "proxy-stopped" };
+async function proxyRequest(method, pathname, body, timeoutMs = 8000) {
+  if (!proxyRunning) return { ok: false, code: "network", message: "proxy-stopped" };
   try {
     const response = await fetch(`http://127.0.0.1:${PORT}/v1${pathname}${pathname.includes("?") ? "&" : "?"}lang=${uiLanguage()}`, {
       method,
       headers: { Authorization: `Bearer ${proxyKey()}`, ...(body ? { "Content-Type": "application/json" } : {}) },
       body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const data = await response.json().catch(() => ({}));
-    return response.ok ? { ok: true, data } : { ok: false, message: data?.error?.message ?? `HTTP ${response.status}` };
+    return response.ok ? { ok: true, data } : { ok: false, code: data?.error?.code, message: data?.error?.message ?? `HTTP ${response.status}` };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : String(error) };
   }
 }
 
+let newsSync = Promise.resolve();
+let newsSyncError = null;
+let newsSyncCode = null;
+
+async function pushNewsSettings() {
+  const feeds = settings.values.feeds;
+  const customFeeds = settings.values.customFeeds;
+  const language = speechLanguage();
+  const result = await proxyRequest("PUT", "/news/settings", {
+    feeds,
+    customFeeds,
+    speechLanguage: language,
+  });
+  const expected = feeds ?? [
+    ...catalog.defaultFeeds[language],
+    ...customFeeds.filter((feed) => feed.language === language).map((feed) => feed.id),
+  ];
+  if (!result.ok || !Array.isArray(result.data?.enabled) || JSON.stringify(result.data.enabled) !== JSON.stringify(expected)) {
+    newsSyncError = result.ok ? "the proxy returned a different news selection" : result.message;
+    newsSyncCode = result.ok ? "config" : result.code ?? "network";
+    throw new Error(`Could not apply news settings: ${newsSyncError}`);
+  }
+  newsSyncError = null;
+  newsSyncCode = null;
+  return result.data;
+}
+
+function queueNewsSync() {
+  newsSync = newsSync.then(pushNewsSettings, pushNewsSettings);
+  void newsSync.then(broadcastSettings, (error) => {
+    console.error(`[news] ${error instanceof Error ? error.message : String(error)}`);
+    broadcastSettings();
+  });
+  return newsSync;
+}
+
 async function ensureProxy() {
   if (!BUNDLED_PROXY && (await portOpen(PORT))) {
     proxyRunning = true; // started outside the app (for example `npm start` while developing)
+    await queueNewsSync().then(() => true, () => false); // error is logged and shown in the news settings
     void refreshProxyStatus();
     listenToProxyEvents();
     return;
@@ -430,6 +472,7 @@ async function ensureProxy() {
   if (BUNDLED_PROXY) PORT = await freePort();
   startProxy();
   proxyRunning = await waitForPort(PORT, 20_000);
+  if (proxyRunning) await queueNewsSync().then(() => true, () => false);
   void refreshProxyStatus();
   listenToProxyEvents();
 }
@@ -443,6 +486,7 @@ async function restartProxy() {
   startProxy(); // same port: the pet keeps its address
 
   proxyRunning = await waitForPort(PORT, 20_000);
+  if (proxyRunning) await queueNewsSync().then(() => true, () => false);
   sendToPet("reconnect");
   broadcastSettings();
   void refreshProxyStatus();
@@ -465,6 +509,8 @@ function snapshot() {
     version: APP_VERSION,
     versions: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
     catalog,
+    newsSyncError,
+    newsSyncCode,
     codexPetsDir: CODEX_PETS_DIR.replace(os.homedir(), "~"),
     pet: petState, // muted / sleeping / connection: the settings window explains what is billed right now
     githubSignIn: Boolean(GITHUB_CLIENT_ID),
@@ -1058,11 +1104,65 @@ function migrateFromPreviousName() {
 // --- IPC: settings -----------------------------------------------------------------------------------------
 ipcMain.handle("settings:get", (event) => (fromOurPages(event) ? snapshot() : undefined));
 
-ipcMain.handle("settings:set", (event, patch) => {
+ipcMain.handle("settings:set", async (event, patch) => {
   if (!fromOurPages(event) || !patch || typeof patch !== "object") return snapshot();
-  const { proxyKey: _ignored, ...allowed } = patch; // the pages never set the proxy key
-  settings.update(allowed);
+  const { proxyKey: _ignored, customFeeds: _newsSites, ...allowed } = patch; // sites go through verified discovery instead
+  if (Object.hasOwn(allowed, "feeds") && !settings.isValid("feeds", allowed.feeds)) throw new Error("Invalid news source selection");
+  const changed = settings.update(allowed);
+  if (changed.includes("feeds")) await newsSync;
+  else if (changed.some((key) => ["language", "speechLanguage"].includes(key))) await newsSync.then(() => true, () => false);
   return snapshot();
+});
+
+ipcMain.handle("settings:add-news-feed", async (event, input) => {
+  if (!fromOurPages(event)) return { ok: false, message: "Unauthorized settings page" };
+  if (settings.values.customFeeds.length >= 10) return { ok: false, code: "limit", message: "Up to 10 personal news sites can be added." };
+  const discovered = await proxyRequest("POST", "/news/discover", input, 18_000);
+  if (!discovered.ok) return discovered;
+  const feed = discovered.data?.feed;
+  if (!settings.isValid("customFeeds", [feed])) {
+    return { ok: false, code: "config", message: "The news proxy returned invalid feed details." };
+  }
+  const next = [...settings.values.customFeeds, feed];
+  if (!settings.isValid("customFeeds", next)) return { ok: false, code: "duplicate", message: "This feed is already added or has invalid details." };
+  const selected = settings.values.feeds;
+  if (selected && selected.length >= 30) {
+    return { ok: false, code: "selection", message: "Select fewer news sources before adding another site." };
+  }
+  settings.update({ customFeeds: next, ...(selected ? { feeds: [...selected, feed.id] } : {}) });
+  try {
+    await newsSync;
+    return { ok: true, feed, snapshot: snapshot() };
+  } catch (error) {
+    return { ok: false, saved: true, snapshot: snapshot(), message: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle("settings:remove-news-feed", async (event, id) => {
+  if (!fromOurPages(event)) return { ok: false, message: "Unauthorized settings page" };
+  if (typeof id !== "string" || !settings.values.customFeeds.some((feed) => feed.id === id)) {
+    return { ok: false, message: "This news site is no longer saved." };
+  }
+  settings.update({
+    customFeeds: settings.values.customFeeds.filter((feed) => feed.id !== id),
+    feeds: settings.values.feeds?.filter((feedId) => feedId !== id) ?? null,
+  });
+  try {
+    await newsSync;
+    return { ok: true, snapshot: snapshot() };
+  } catch (error) {
+    return { ok: false, saved: true, snapshot: snapshot(), message: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle("settings:sync-news-feeds", async (event) => {
+  if (!fromOurPages(event)) return { ok: false, message: "Unauthorized settings page" };
+  try {
+    await queueNewsSync();
+    return { ok: true, snapshot: snapshot() };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error), snapshot: snapshot() };
+  }
 });
 
 ipcMain.handle("settings:set-gemini-key", async (event, key) => {
@@ -1281,6 +1381,32 @@ async function runSmokeTest() {
     if (!result || (name === "pet" ? !(result.character && result.drawn) : !result.sections)) smokeProblems.push(`the ${name} page did not render`);
     else if (result.platform !== process.platform) smokeProblems.push(`the ${name} page thinks it runs on "${result.platform}"`);
   }
+  if (settingsWin && !settingsWin.isDestroyed() && report.settings?.sections) {
+    try {
+      report.news = await settingsWin.webContents.executeJavaScript(`(async () => {
+        document.querySelector('[data-section="news"]').click();
+        const page = document.getElementById("section-news");
+        const sourceSwitches = page.querySelectorAll('input[role="switch"]').length;
+        const emptyScience = page.querySelector('[data-news-empty-category="science"] .desc')?.textContent;
+        const url = page.querySelector('input.news-url');
+        const fields = page.querySelectorAll(".news-add-controls select").length;
+        await window.pet.settings.set({ feeds: [] });
+        const emptyVisible = !page.querySelector(".news-empty").hidden;
+        url.value = "http://127.0.0.1/rss";
+        page.querySelector(".news-add-controls button").click();
+        const invalidUrlVisible = !!page.querySelector(".message.error")?.textContent;
+        await window.pet.settings.set({ feeds: null });
+        return { visible: !page.hidden, sourceSwitches, emptyScience, fields, emptyVisible, invalidUrlVisible };
+      })()`);
+      if (!report.news.visible || report.news.sourceSwitches < 17 || report.news.fields !== 2 ||
+          !["候補なし", "No sources available"].includes(report.news.emptyScience) ||
+          !report.news.emptyVisible || !report.news.invalidUrlVisible) {
+        smokeProblems.push("the news settings could not show source choices, empty categories, an empty state and URL validation");
+      }
+    } catch (error) {
+      smokeProblems.push(`news settings test failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
   // The proxy, and the Copilot runtime behind it (it can take a while to start).
   let status;
   for (let attempt = 0; attempt < 90 && (!status || status.copilot === "starting"); attempt++) {
@@ -1335,7 +1461,8 @@ app.whenReady().then(async () => {
     }
     if (keys.includes("launchAtLogin") && app.isPackaged) app.setLoginItemSettings({ openAtLogin: settings.values.launchAtLogin });
     if (keys.some((key) => key === "mcpServers" || key.startsWith("secret:mcp:"))) schedulePushMcp();
-    broadcastSettings();
+    if (keys.some((key) => ["feeds", "customFeeds", "language", "speechLanguage"].includes(key))) void queueNewsSync();
+    else broadcastSettings();
   });
 
   protocol.handle("pet", (request) => {
