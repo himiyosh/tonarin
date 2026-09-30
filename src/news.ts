@@ -137,9 +137,9 @@ export function enabledFeedIds(language: Language = chosenLanguage): string[] {
   return chosenFeeds ?? [...CATALOG.defaultFeeds[language], ...customFeeds.filter((feed) => feed.language === language).map((feed) => feed.id)];
 }
 
-/** Keep the original 12 keyword sources, plus whichever new sources the user enabled. */
+/** Keyword watches use the same enabled sources as ordinary headlines. */
 export function keywordFeedIds(): string[] {
-  return [...new Set([...LEGACY_FEED_IDS, ...enabledFeedIds()])];
+  return enabledFeedIds();
 }
 
 export function isAllowedUrl(url: URL, selected: readonly string[] = enabledFeedIds()): boolean {
@@ -285,6 +285,17 @@ export async function fetchHeadlines(
       };
     }),
     skippedLinks,
+  };
+}
+
+/** One scheduled keyword check, with a distinct state when there is nothing to fetch. */
+export async function checkKeywordSources(network?: NewsNetwork) {
+  const feeds = keywordFeedIds();
+  if (!feeds.length) return { kind: "no-sources" as const };
+  return {
+    kind: "results" as const,
+    feeds,
+    results: await Promise.allSettled(feeds.map((feed) => fetchHeadlines(feed, 20, 200, network))),
   };
 }
 

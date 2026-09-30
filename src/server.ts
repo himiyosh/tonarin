@@ -27,7 +27,7 @@ import { z } from "zod";
 import { getAuthStatusWithRecovery, withTimeout } from "./copilot-startup.js";
 import { attachLive, type Announcement, type LiveSession, type LiveTool, type NoiseFilter, type SessionOptions } from "./live.js";
 import {
-  CATALOG, FEEDS, NEWS_CATEGORIES, asUntrustedNewsData, configureNewsSources, discoverNewsFeed, enabledFeedIds,
+  CATALOG, FEEDS, NEWS_CATEGORIES, asUntrustedNewsData, checkKeywordSources, configureNewsSources, discoverNewsFeed, enabledFeedIds,
   fetchArticle, fetchHeadlines, headlineFailure, keywordFeedIds, newsToolsFor, type Language,
 } from "./news.js";
 import { NewsFetchError } from "./news-network.js";
@@ -1188,10 +1188,17 @@ function keywordPattern(keyword: string): RegExp {
 
 async function runKeywordWatch(automation: Automation): Promise<void> {
   if (automation.trigger.type !== "keyword") return;
+  const checked = await checkKeywordSources();
+  if (checked.kind === "no-sources") {
+    automations.addHistory(automation, "error", automation.language === "ja"
+      ? "キーワード通知の取得元がありません。「設定」→「ニュース」でサイトをオンにしてください。"
+      : "No news sources are enabled for keyword alerts. Turn on a site in Settings → News.");
+    publishEvent({ type: "automation-error", id: automation.id, name: automation.name });
+    return;
+  }
   const keywords = automation.trigger.keywords;
   const patterns = keywords.map(keywordPattern);
-  const feeds = keywordFeedIds();
-  const results = await Promise.allSettled(feeds.map((feed) => fetchHeadlines(feed, 20, 200)));
+  const { feeds, results } = checked;
   for (let i = 0; i < results.length; i++) {
     const result = results[i];
     if (result.status === "rejected") {
