@@ -98,7 +98,7 @@ function sessionOptions() {
   const values = snap.values;
   // Modes (english practice, focus) are implemented in the proxy but not offered for now: always the everyday buddy.
   const mode = "companion";
-  const language = snap.speechLanguage;
+  const language = mode === "english" ? "en" : snap.speechLanguage;
   return {
     mode,
     language,
@@ -107,7 +107,10 @@ function sessionOptions() {
     persona: values.persona,
     silenceMs: values.silenceMs,
     noiseFilter: values.noiseFilter,
-    feeds: values.feeds ?? snap.catalog.defaultFeeds[language],
+    feeds: values.feeds ?? [
+      ...snap.catalog.defaultFeeds[language],
+      ...values.customFeeds.filter((feed) => feed.language === language).map((feed) => feed.id),
+    ],
     useCopilot: values.useCopilot,
   };
 }
