@@ -235,6 +235,8 @@ Environment variables for development and for the standalone proxy are listed in
 | `npm run icon:derive` | Rebuild the Windows icons and the download page images from the app icon (needs Pillow) |
 | `npm run hooks` | Enable the repo's Git hooks (blocks direct pushes to `main`) |
 
+Packaged smoke accepts a signed-out Copilot runtime, but requires an actual sign-in status response. If the first check stalls, the proxy retries once only after the runtime answers a separate status probe; a runtime that stays unavailable still fails.
+
 ```text
 tonarin/
 ├── pet/            Electron app: main process, preload, settings, layout, GitHub sign-in
