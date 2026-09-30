@@ -1,7 +1,7 @@
 {
   "name": "tonarin",
   "productName": "Tonarin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A voice desk companion for macOS and Windows: talk in real time with Gemini Live, with GitHub Copilot as the brain for deep dives",
   "license": "MIT",
