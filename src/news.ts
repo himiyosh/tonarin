@@ -7,12 +7,17 @@
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { defineTool } from "@github/copilot-sdk";
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import Parser from "rss-parser";
 import { z } from "zod";
-import { fetchPublicHttps, NewsFetchError, publicHttpsUrl, type NewsNetwork, type NewsResource } from "./news-network.js";
+import { fetchPublicHttps, NEWS_USER_AGENT, NewsFetchError, publicHttpsUrl, type NewsNetwork, type NewsResource } from "./news-network.js";
+
+// The package's CommonJS export is callable, but its bundled NodeNext declaration is not.
+const robotsParser: (url: string, contents: string) => { isAllowed(url: string, userAgent?: string): boolean | undefined } =
+  createRequire(import.meta.url)("robots-parser");
 
 export type Language = "ja" | "en";
 export const NEWS_CATEGORIES = ["technology", "general", "business", "science", "lifestyle"] as const;
@@ -26,10 +31,11 @@ const feedSchema = z.object({
   category: categorySchema,
   url: z.string().min(1),
   hosts: z.array(z.string().min(1)),
+  articleAccess: z.enum(["feed-only", "article"]),
   attribution: z.object({ text: z.string().min(1).max(200), url: z.url() }).optional(),
 });
 export type FeedInfo = z.infer<typeof feedSchema>;
-const customFeedSchema = feedSchema.omit({ hosts: true, attribution: true }).extend({
+const customFeedSchema = feedSchema.omit({ hosts: true, articleAccess: true, attribution: true }).extend({
   id: z.string().regex(/^custom-[0-9a-f-]{36}$/),
   siteUrl: z.string().min(1),
   siteHost: z.string().min(1),
@@ -41,6 +47,7 @@ export interface VoiceInfo {
 }
 const catalogSchema = z.object({
   feeds: z.array(feedSchema).min(1),
+  prohibitedFeedHosts: z.array(z.string().min(1)),
   defaultFeeds: z.object({ ja: z.array(z.string()), en: z.array(z.string()) }),
   voices: z.array(z.object({ id: z.string(), style: z.object({ ja: z.string(), en: z.string() }) })),
 });
@@ -56,19 +63,43 @@ let customFeeds: CustomFeed[] = [];
 let chosenFeeds: string[] | null = null;
 let chosenLanguage: Language = "ja";
 
-/**
- * Original article hosts retain their historic subdomain policy (ITmedia, Impress, etc.).
- * New built-ins and user-added sites grant exact hosts, never a feed host by implication.
- */
-const LEGACY_HOSTS = [...new Set(CATALOG.feeds.filter((feed) => LEGACY_FEED_IDS.includes(feed.id)).flatMap((feed) => feed.hosts))];
-const BUILTIN_EXACT_HOSTS = new Set(CATALOG.feeds.filter((feed) => !LEGACY_FEED_IDS.includes(feed.id)).flatMap((feed) => feed.hosts));
-
 const MAX_ARTICLE_CHARS = 6000;
 const MAX_HTML_BYTES = 2 * 1024 * 1024;
 const MAX_FEED_BYTES = 1024 * 1024;
 const MAX_DISCOVERY_BYTES = 1024 * 1024;
+const MAX_ROBOTS_BYTES = 500 * 1024;
 const DISCOVERY_TIMEOUT_MS = 15_000;
+const ARTICLE_TIMEOUT_MS = 12_000;
 const FEED_START = /^\s*(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*<(?:rss|feed|rdf:RDF)\b/i;
+
+function matchesHost(hostname: string, host: string): boolean {
+  return hostname === host || hostname.endsWith(`.${host}`);
+}
+
+function prohibitedFeedHost(hostname: string): boolean {
+  return CATALOG.prohibitedFeedHosts.some((host) => matchesHost(hostname, host));
+}
+
+function checkFeedRights(hostname: string): void {
+  if (prohibitedFeedHost(hostname)) {
+    throw new NewsFetchError("This publisher does not permit Tonarin's AI news use of its feed.", "rights");
+  }
+}
+
+function builtInHost(feed: FeedInfo, hostname: string): boolean {
+  return feed.hosts.some((host) =>
+    hostname === host || LEGACY_FEED_IDS.includes(feed.id) && hostname.endsWith(`.${host}`));
+}
+
+type ArticlePolicy = "article" | "custom" | "feed-only" | "rights" | "disabled";
+
+function articlePolicy(url: URL, selected: readonly string[]): ArticlePolicy {
+  if (prohibitedFeedHost(url.hostname)) return "rights";
+  const matching = CATALOG.feeds.filter((feed) => builtInHost(feed, url.hostname));
+  if (matching.some((feed) => feed.articleAccess === "feed-only")) return "feed-only";
+  if (matching.length) return "article";
+  return customFeeds.some((feed) => selected.includes(feed.id) && url.hostname === feed.siteHost) ? "custom" : "disabled";
+}
 
 /** The settings process sends the complete validated snapshot, so removal revokes article access immediately. */
 export function configureNewsSources(input: unknown): { enabled: string[] } {
@@ -83,6 +114,8 @@ export function configureNewsSources(input: unknown): { enabled: string[] } {
   for (const feed of settings.data.customFeeds) {
     const site = publicHttpsUrl(feed.siteUrl);
     const source = publicHttpsUrl(feed.url);
+    checkFeedRights(site.hostname);
+    checkFeedRights(source.hostname);
     if (feed.siteHost !== site.hostname || ids.has(feed.id) || urls.has(source.href)) {
       throw new NewsFetchError("The saved news site has an invalid host or duplicate ID/URL.", "config");
     }
@@ -116,9 +149,7 @@ export function isAllowedUrl(url: URL, selected: readonly string[] = enabledFeed
     if (error instanceof NewsFetchError) return false;
     throw error;
   }
-  return LEGACY_HOSTS.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`)) ||
-    BUILTIN_EXACT_HOSTS.has(url.hostname) ||
-    customFeeds.some((feed) => selected.includes(feed.id) && url.hostname === feed.siteHost);
+  return ["article", "custom"].includes(articlePolicy(url, selected));
 }
 
 /**
@@ -164,13 +195,32 @@ function feedXml(resource: NewsResource): string {
   return xml;
 }
 
-async function parseFeed(resource: NewsResource): Promise<Parser.Output<unknown>> {
+interface FeedMetadata {
+  feedDescription?: string;
+  feedSummary?: string;
+}
+
+async function parseFeed(resource: NewsResource): Promise<Parser.Output<FeedMetadata>> {
   try {
-    return await new Parser().parseString(feedXml(resource));
+    return await new Parser<unknown, FeedMetadata>({
+      customFields: { item: [["description", "feedDescription"], ["summary", "feedSummary"]] },
+    }).parseString(feedXml(resource));
   } catch (error) {
     if (error instanceof NewsFetchError) throw error;
     console.error(`[news] RSS/Atom parser failed (${error instanceof Error ? error.name : typeof error})`);
     throw new NewsFetchError("The RSS/Atom feed could not be parsed.", "feed");
+  }
+}
+
+function checkFeedPublisher(parsed: Parser.Output<FeedMetadata>, base: URL): void {
+  for (const link of [parsed.link, ...parsed.items.map((item) => item.link)]) {
+    if (!link) continue;
+    try {
+      checkFeedRights(new URL(link, base).hostname);
+    } catch (error) {
+      if (error instanceof TypeError) throw new NewsFetchError("The feed contains an invalid publisher link.", "feed");
+      throw error;
+    }
   }
 }
 
@@ -190,21 +240,39 @@ function articleLink(link: string | undefined, base: URL): string {
   }
 }
 
+function metadataSummary(item: Parser.Item & FeedMetadata): string {
+  const summary = item.feedDescription ?? item.feedSummary;
+  if (typeof summary !== "string") return "";
+  const { document } = parseHTML(`<html><body>${summary.slice(0, 4096)}</body></html>`);
+  for (const element of document.querySelectorAll("script, style")) element.remove();
+  return (document.body?.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
 /** Latest headlines from one registered feed. Shared by Copilot, Gemini Live and keyword watches. */
 export async function fetchHeadlines(
   feed: FeedId,
   limit = 5,
   summaryChars = 200,
   network?: NewsNetwork,
-): Promise<{ source: string; feed: string; items: Headline[]; skippedLinks: number; attribution?: FeedInfo["attribution"] }> {
+): Promise<{ source: string; feed: string; articleAccess: "article" | "feed-only" | "robots-gated"; items: Headline[]; skippedLinks: number; attribution?: FeedInfo["attribution"] }> {
   const source = Object.hasOwn(FEEDS, feed) ? FEEDS[feed] : undefined;
   if (!source) throw new Error(`Unknown feed: ${feed}`);
-  const resource = await fetchPublicHttps(source.url, { limitBytes: MAX_FEED_BYTES }, network);
+  const personal = "siteHost" in source;
+  if (personal) {
+    checkFeedRights(source.siteHost);
+    checkFeedRights(new URL(source.url).hostname);
+  }
+  const resource = await fetchPublicHttps(source.url, {
+    limitBytes: MAX_FEED_BYTES,
+    ...(personal ? { allowRedirect: (next: URL) => { checkFeedRights(next.hostname); return true; } } : {}),
+  }, network);
   const parsed = await parseFeed(resource);
+  if (personal) checkFeedPublisher(parsed, resource.url);
   let skippedLinks = 0;
   return {
     source: source.name,
     feed,
+    articleAccess: personal ? "robots-gated" : source.articleAccess,
     ...("attribution" in source && source.attribution ? { attribution: source.attribution } : {}),
     items: parsed.items.slice(0, Math.max(1, Math.min(limit, 20))).map((item) => {
       const url = articleLink(item.link, resource.url);
@@ -213,7 +281,7 @@ export async function fetchHeadlines(
         title: (item.title ?? "").replace(/\s+/g, " ").trim().slice(0, 240),
         url,
         published: (item.isoDate ?? item.pubDate ?? "").slice(0, 100),
-        summary: (item.contentSnippet ?? "").replace(/\s+/g, " ").trim().slice(0, Math.min(summaryChars, 300)),
+        summary: metadataSummary(item).slice(0, Math.min(summaryChars, 300)),
       };
     }),
     skippedLinks,
@@ -264,10 +332,12 @@ export async function discoverNewsFeed(
     throw new NewsFetchError("Choose a valid language and news category.", "config");
   }
   const site = publicHttpsUrl(rawUrl);
+  checkFeedRights(site.hostname);
   const signal = AbortSignal.timeout(DISCOVERY_TIMEOUT_MS);
-  const first = await fetchPublicHttps(site, { limitBytes: MAX_DISCOVERY_BYTES, signal }, network);
+  const allowFeedRedirect = (next: URL) => { checkFeedRights(next.hostname); return true; };
+  const first = await fetchPublicHttps(site, { limitBytes: MAX_DISCOVERY_BYTES, signal, allowRedirect: allowFeedRedirect }, network);
   let feed: NewsResource | undefined;
-  let parsed: Parser.Output<unknown> | undefined;
+  let parsed: Parser.Output<FeedMetadata> | undefined;
   const body = decodeHtml(first.bytes, first.contentType);
   if (FEED_START.test(body) || (/xml/i.test(first.contentType) && /<!(?:DOCTYPE|ENTITY)\b/i.test(body))) {
     feed = first;
@@ -282,8 +352,9 @@ export async function discoverNewsFeed(
       : [new URL("/feed", first.url), new URL("/rss.xml", first.url), new URL("/atom.xml", first.url)];
     let lastFailure: NewsFetchError | undefined;
     for (const candidate of candidates) {
+      checkFeedRights(candidate.hostname);
       try {
-        const result = await fetchPublicHttps(candidate, { limitBytes: MAX_FEED_BYTES, signal }, network);
+        const result = await fetchPublicHttps(candidate, { limitBytes: MAX_FEED_BYTES, signal, allowRedirect: allowFeedRedirect }, network);
         parsed = await parseFeed(result);
         feed = result;
         break;
@@ -298,6 +369,7 @@ export async function discoverNewsFeed(
       throw new NewsFetchError("No readable RSS/Atom feed was found on this site.", "feed");
     }
   }
+  checkFeedPublisher(parsed, feed.url);
   const name = (parsed.title ?? "").replace(/[\x00-\x1f\x7f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 100) || site.hostname;
   return {
     id: `custom-${randomUUID()}`,
@@ -310,9 +382,40 @@ export async function discoverNewsFeed(
   };
 }
 
+async function articleRobots(url: URL, signal: AbortSignal, network?: NewsNetwork): Promise<ReturnType<typeof robotsParser> | null> {
+  const robotsUrl = new URL("/robots.txt", url);
+  try {
+    const resource = await fetchPublicHttps(robotsUrl, { limitBytes: MAX_ROBOTS_BYTES, signal }, network);
+    const body = resource.bytes.toString("utf8");
+    if (/html/i.test(resource.contentType) || /^\s*(?:<!doctype\s+html|<html)\b/i.test(body)) {
+      throw new NewsFetchError("The site did not return a readable robots.txt.", "robots");
+    }
+    return robotsParser(robotsUrl.href, body);
+  } catch (error) {
+    if (error instanceof NewsFetchError && error.code === "http" && [204, 404, 410].includes(error.httpStatus ?? 0)) return null;
+    throw error;
+  }
+}
+
+function membershipPath(url: URL): boolean {
+  return /\/(?:login|signin|sign-in|subscribe|subscription|members?|premium|paywall)(?:\/|$)/i.test(url.pathname);
+}
+
+function paywallDetected(resource: NewsResource, html: string): boolean {
+  if (membershipPath(resource.url)) return true;
+  if (resource.headers["www-authenticate"] ||
+      ["x-paywall", "x-subscription-required", "x-access-level"].some((name) =>
+        /required|premium|subscriber|locked|metered|paywall|true/i.test(String(resource.headers[name] ?? "")))) return true;
+  if (/"isAccessibleForFree"\s*:\s*(?:false|"false")/i.test(html)) return true;
+  const { document } = parseHTML(html);
+  if (document.querySelector('[data-paywall="true"], [data-paywall="locked"], [class~="paywall"], [id="paywall"], [class~="subscriber-only"]')) return true;
+  const message = /subscribe to (?:continue|read|unlock)|sign in to (?:continue|read|view)|subscription required|members only|subscriber(?:s)? only|有料会員(?:限定|向け)|この記事は有料|続きを読むには.{0,20}(?:ログイン|会員登録)/i;
+  return message.test(document.body?.textContent ?? "") || message.test(html.replace(/<[^>]*>/g, " "));
+}
+
 /**
- * Main text of an article on an allowlisted host. Returns a plain message string when the page
- * cannot be read. Shared by the Copilot tool and the Gemini Live bridge.
+ * Main text only where publisher rights or a custom site's robots.txt allow it.
+ * Returns a plain message string when the page cannot be read.
  */
 export async function fetchArticle(
   url: string,
@@ -326,20 +429,70 @@ export async function fetchArticle(
     if (error instanceof NewsFetchError) return error.message;
     throw error;
   }
-  if (!isAllowedUrl(target, selected)) {
+  const access = articlePolicy(target, selected);
+  if (access === "rights" || access === "feed-only") {
+    return `This publisher only permits feed headlines and descriptions here; no article body was fetched. Original link: ${target.href}`;
+  }
+  if (access === "disabled") {
     return `Article host ${target.hostname} is not enabled for reading. Adding a feed does not grant its article links on other hosts.`;
+  }
+  if (membershipPath(target)) {
+    return `This article requires a subscription or membership; no article text is available. Original link: ${target.href}`;
   }
 
   let resource: NewsResource;
+  const signal = AbortSignal.timeout(ARTICLE_TIMEOUT_MS);
+  let robots: ReturnType<typeof robotsParser> | null = null;
+  if (access === "custom") {
+    try {
+      robots = await articleRobots(target, signal, network);
+    } catch (error) {
+      if (error instanceof NewsFetchError) {
+        return `Could not verify robots.txt (${error.message}); no article was fetched. Original link: ${target.href}`;
+      }
+      throw error;
+    }
+    if (robots && robots.isAllowed(target.href, NEWS_USER_AGENT) !== true) {
+      return `robots.txt does not permit reading this article. Original link: ${target.href}`;
+    }
+  }
   try {
-    resource = await fetchPublicHttps(target, { limitBytes: MAX_HTML_BYTES, allowRedirect: (next) => isAllowedUrl(next, selected) }, network);
+    resource = await fetchPublicHttps(target, {
+      limitBytes: MAX_HTML_BYTES,
+      signal,
+      allowRedirect: (next) => {
+        if (next.hostname !== target.hostname || articlePolicy(next, selected) !== access) return false;
+        if (membershipPath(next)) {
+          throw new NewsFetchError("The article redirected to a sign-in or subscription page.", "paywall");
+        }
+        if (robots && robots.isAllowed(next.href, NEWS_USER_AGENT) !== true) {
+          throw new NewsFetchError("robots.txt does not permit the article redirect.", "robots");
+        }
+        return true;
+      },
+    }, network);
   } catch (error) {
-    if (error instanceof NewsFetchError) return error.message;
+    if (error instanceof NewsFetchError) {
+      if (error.code === "paywall") {
+        return `This article requires a subscription or membership; no article text is available. Original link: ${target.href}`;
+      }
+      if (error.code === "http" && [401, 402, 403].includes(error.httpStatus ?? 0)) {
+        return `The article requires access or was denied; no article text was read. Original link: ${target.href}`;
+      }
+      if (error.code === "robots" || access === "custom" && error.code !== "redirect") {
+        return `${error.message} Original link: ${target.href}`;
+      }
+      return error.message;
+    }
     throw error;
   }
   if (resource.contentType && !/html/i.test(resource.contentType)) return "The article is not an HTML page.";
 
-  const { title, text } = extractArticle(decodeHtml(resource.bytes, resource.contentType));
+  const html = decodeHtml(resource.bytes, resource.contentType);
+  if (paywallDetected(resource, html)) {
+    return `This article requires a subscription or membership; no article text is available. Original link: ${resource.url.href}`;
+  }
+  const { title, text } = extractArticle(html);
   if (!text) {
     return "Could not extract readable text from this page.";
   }
@@ -389,8 +542,8 @@ function makeListHeadlines(language: Language) {
 function makeReadArticle(language: Language) {
   return defineTool("read_article", {
     description:
-      "Fetch the main text of a news article. Only URLs on allowlisted news sites can be fetched; " +
-      "use URLs returned by list_headlines.",
+      "Fetch main article text only when publisher terms or the custom site's robots.txt permit it. " +
+      "For feed-only sources, use list_headlines title/summary/link instead. Never infer a blocked article's contents.",
     parameters: z.object({
       url: z.url().describe("Article URL (https)"),
     }),

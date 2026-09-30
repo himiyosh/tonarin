@@ -23,6 +23,7 @@ const ATOM = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><ti
   <updated>2026-09-29T10:00:00Z</updated><summary>First light</summary></entry></feed>`;
 const ARTICLE = `<html><head><title>Example article</title></head><body><article><h1>Example article</h1>
   <p>${"The story describes a new result in detail and cites public research. ".repeat(12)}</p></article></body></html>`;
+const ROBOTS_ALLOW = { body: "User-agent: Tonarin-news\nAllow: /", headers: { "content-type": "text/plain" } };
 const custom = (id = "custom-12345678-1234-1234-1234-123456789abc", language = "ja") => ({
   id, name: "Your science news", language, category: "science",
   siteUrl: "https://news.example.org/", siteHost: "news.example.org", url: "https://feeds.example.org/atom.xml",
@@ -93,6 +94,9 @@ test("native transport pins DNS, disables proxies/compression and validates the 
   assert.equal(stub.requests[0].options.agent, false);
   assert.equal(stub.requests[0].options.rejectUnauthorized, true);
   assert.equal(stub.requests[0].options.headers["Accept-Encoding"], "identity");
+  assert.match(stub.requests[0].options.headers["User-Agent"], /^Tonarin-news\//);
+  assert.equal(stub.requests[0].options.headers.Cookie, undefined);
+  assert.equal(stub.requests[0].options.headers.Authorization, undefined);
   const pinned = await new Promise((resolve) => stub.requests[0].options.lookup("www.itmedia.co.jp", {}, (_error, address) => resolve(address)));
   assert.equal(pinned, PUBLIC_IP);
   for (const remoteAddress of ["10.0.0.1", "1.1.1.1"]) {
@@ -219,21 +223,203 @@ test("direct RSS works; a site without RSS is rejected, as are XML DTDs", async 
   assert.equal((await fetchHeadlines(existing.id, 5, 200, safeCdata.network)).items.length, 1);
 });
 
-test("article access respects exact custom host on redirects and preserves built-in host permissions", async () => {
+test("custom article reads check robots.txt and keep every redirect on the original site host", async () => {
   const added = custom();
   configureNewsSources({ customFeeds: [added], feeds: [added.id], speechLanguage: "ja" });
   const article = "https://news.example.org/story";
-  const good = fakeNetwork({ [article]: { body: ARTICLE, headers: { "content-type": "text/html; charset=utf-8" } } });
+  const robots = "https://news.example.org/robots.txt";
+  const good = fakeNetwork({
+    [robots]: ROBOTS_ALLOW,
+    [article]: { body: ARTICLE, headers: { "content-type": "text/html; charset=utf-8" } },
+  });
   const text = await fetchArticle(article, good.network);
   assert.equal(typeof text, "object");
   assert.match(text.text, /new result/);
-  const redirect = fakeNetwork({ [article]: { status: 302, headers: { location: "https://feeds.example.org/story" } } });
+  assert.deepEqual(good.requests.map((request) => request.url), [robots, article]);
+  const redirect = fakeNetwork({
+    [robots]: ROBOTS_ALLOW,
+    [article]: { status: 302, headers: { location: "https://feeds.example.org/story" } },
+  });
   assert.match(await fetchArticle(article, redirect.network), /redirected outside/);
-  assert.equal(redirect.requests.length, 1);
-  assert.equal(isAllowedUrl(new URL("https://www.itmedia.co.jp/news/story")), true);
+  assert.deepEqual(redirect.requests.map((request) => request.url), [robots, article]);
+  const other = { ...custom("custom-87654321-4321-4321-4321-abcdefabcdef"),
+    siteUrl: "https://feeds.example.org/", siteHost: "feeds.example.org", url: "https://feeds.example.org/rss.xml" };
+  configureNewsSources({ customFeeds: [added, other], feeds: [added.id, other.id], speechLanguage: "ja" });
+  assert.match(await fetchArticle(article, redirect.network), /redirected outside/, "another enabled site does not authorize a redirect");
   configureNewsSources({ customFeeds: [], feeds: [], speechLanguage: "ja" });
   assert.equal(isAllowedUrl(new URL(article)), false, "removal revokes the added host");
-  assert.equal(isAllowedUrl(new URL("https://www.itmedia.co.jp/news/story")), true, "legacy allowlist is preserved");
+  assert.equal(isAllowedUrl(new URL("https://www.digital.go.jp/news/story")), true, "licensed built-in articles remain available");
+  assert.equal(isAllowedUrl(new URL("https://www.itmedia.co.jp/news/story")), false, "unlicensed legacy article bodies are feed-only");
+});
+
+test("every original technology source stays feed-only even when its host is registered again", async () => {
+  const old = [...new Set(Object.values(CATALOG.defaultFeeds).flat())];
+  assert.equal(old.length, 12);
+  assert.ok(CATALOG.feeds.filter((feed) => old.includes(feed.id)).every((feed) => feed.articleAccess === "feed-only"));
+  const added = { ...custom(), siteUrl: "https://www.itmedia.co.jp/", siteHost: "www.itmedia.co.jp",
+    url: "https://rss.itmedia.co.jp/rss/2.0/custom.xml" };
+  configureNewsSources({ customFeeds: [added], feeds: [added.id], speechLanguage: "ja" });
+  const stub = fakeNetwork({});
+  const original = "https://www.itmedia.co.jp/news/articles/example";
+  assert.match(await fetchArticle(original, stub.network), /feed headlines and descriptions.*Original link/);
+  assert.equal(stub.requests.length, 0, "restricted built-in wins over a custom source before robots or article GET");
+  assert.equal(isAllowedUrl(new URL("https://sub.itmedia.co.jp/news/story")), false);
+  const osaka = CATALOG.feeds.find((feed) => feed.id === "osaka_business");
+  assert.equal(osaka.articleAccess, "feed-only");
+  assert.equal(isAllowedUrl(new URL("https://www.pref.osaka.lg.jp/story")), false);
+  const approved = CATALOG.feeds.filter((feed) => ["digital_agency", "soumu_news", "govuk_general", "nsf_science"].includes(feed.id));
+  assert.ok(approved.every((feed) => feed.articleAccess === "article"));
+});
+
+test("publisher feed-use restrictions cannot be bypassed by a custom site, feed URL or redirect", async () => {
+  for (const host of ["theguardian.com", "news.yahoo.co.jp", "feeds.bbci.co.uk", "feeds.npr.org"]) {
+    const site = { ...custom(), siteUrl: `https://${host}/`, siteHost: host, url: "https://feeds.example.org/rss.xml" };
+    const feed = { ...custom(), url: `https://${host}/rss.xml` };
+    assert.throws(() => configureNewsSources({ customFeeds: [site], feeds: [site.id], speechLanguage: "ja" }), { code: "rights" });
+    assert.throws(() => configureNewsSources({ customFeeds: [feed], feeds: [feed.id], speechLanguage: "ja" }), { code: "rights" });
+  }
+  const noRequest = fakeNetwork({});
+  await assert.rejects(discoverNewsFeed("https://www.theguardian.com/uk/rss", "en", "general", noRequest.network), { code: "rights" });
+  assert.equal(noRequest.requests.length, 0);
+  const site = "https://news.example.org/";
+  const remote = "https://feeds.example.org/rss.xml";
+  const redirected = fakeNetwork({
+    [site]: { body: `<html><link rel="alternate" type="application/rss+xml" href="${remote}"></html>`,
+      headers: { "content-type": "text/html" } },
+    [remote]: { status: 302, headers: { location: "https://news.yahoo.co.jp/rss/categories/top-picks.xml" } },
+  });
+  await assert.rejects(discoverNewsFeed(site, "ja", "general", redirected.network), { code: "rights" });
+  assert.deepEqual(redirected.requests.map((request) => request.url), [site, remote]);
+  const added = custom();
+  configureNewsSources({ customFeeds: [added], feeds: [added.id], speechLanguage: "ja" });
+  const feed = fakeNetwork({ [added.url]: { status: 302, headers: { location: "https://www.theguardian.com/uk/rss" } } });
+  await assert.rejects(fetchHeadlines(added.id, 5, 200, feed.network), { code: "rights" });
+  assert.equal(feed.requests.length, 1);
+  const syndicated = RSS.replace("https://www.itmedia.co.jp/news/articles/example", "https://www.theguardian.com/uk/story");
+  await assert.rejects(fetchHeadlines(added.id, 5, 200,
+    fakeNetwork({ [added.url]: { body: syndicated } }).network), { code: "rights" });
+  const channel = RSS.replace("<channel><title>News</title>", "<channel><title>News</title><link>https://www.theguardian.com/uk/</link>");
+  await assert.rejects(discoverNewsFeed("https://news.example.org/rss.xml", "en", "general",
+    fakeNetwork({ "https://news.example.org/rss.xml": { body: channel } }).network), { code: "rights" });
+});
+
+test("robots rules apply to custom article paths and redirects before article GET", async () => {
+  const added = custom();
+  configureNewsSources({ customFeeds: [added], feeds: [added.id], speechLanguage: "ja" });
+  const robots = "https://news.example.org/robots.txt";
+  const article = "https://news.example.org/public/story";
+  const privateArticle = "https://news.example.org/private/story";
+  const rules = { body: "User-agent: Tonarin-news\nDisallow: /private\nAllow: /public\nUser-agent: *\nAllow: /",
+    headers: { "content-type": "text/plain" } };
+  const stub = fakeNetwork({
+    [robots]: rules,
+    [article]: { body: ARTICLE, headers: { "content-type": "text/html" } },
+  });
+  assert.match((await fetchArticle(article, stub.network)).text, /new result/);
+  assert.match(await fetchArticle(privateArticle, stub.network), /robots.txt.*Original link/);
+  assert.deepEqual(stub.requests.map((request) => request.url), [robots, article, robots]);
+  const redirect = fakeNetwork({
+    [robots]: rules,
+    [article]: { status: 302, headers: { location: privateArticle } },
+  });
+  assert.match(await fetchArticle(article, redirect.network), /robots.txt.*Original link/);
+  assert.deepEqual(redirect.requests.map((request) => request.url), [robots, article]);
+});
+
+test("redirected, missing and unavailable robots policies never silently expose custom articles", async () => {
+  const added = custom();
+  configureNewsSources({ customFeeds: [added], feeds: [added.id], speechLanguage: "ja" });
+  const robots = "https://news.example.org/robots.txt";
+  const article = "https://news.example.org/story";
+  const cdn = "https://cdn.example.org/robots.txt";
+  const redirected = fakeNetwork({
+    [robots]: { status: 301, headers: { location: cdn } },
+    [cdn]: { body: "User-agent: *\nDisallow: /", headers: { "content-type": "text/plain" } },
+  });
+  assert.match(await fetchArticle(article, redirected.network), /robots.txt.*Original link/);
+  assert.deepEqual(redirected.requests.map((request) => request.url), [robots, cdn]);
+  const missing = fakeNetwork({
+    [robots]: { status: 404 },
+    [article]: { body: ARTICLE, headers: { "content-type": "text/html" } },
+  });
+  assert.match((await fetchArticle(article, missing.network)).text, /new result/);
+  for (const failed of [{ status: 403 }, { status: 503 },
+    { body: "<html>Challenge</html>", headers: { "content-type": "text/html" } },
+    { body: "<html>Challenge</html>", headers: { "content-type": "text/plain" } }]) {
+    const blocked = fakeNetwork({ [robots]: failed, [article]: { body: ARTICLE } });
+    const result = await fetchArticle(article, blocked.network);
+    assert.equal(typeof result, "string");
+    assert.match(result, /robots.txt.*Original link/);
+    assert.deepEqual(blocked.requests.map((request) => request.url), [robots]);
+  }
+  const privateRedirect = fakeNetwork({ [robots]: { status: 302, headers: { location: "https://127.0.0.1/robots.txt" } } });
+  assert.match(await fetchArticle(article, privateRedirect.network), /robots.txt.*Original link/);
+  assert.equal(privateRedirect.requests.length, 1);
+  const outage = fakeNetwork({});
+  assert.match(await fetchArticle(article, outage.network), /robots.txt.*Could not connect.*Original link/);
+  assert.equal(outage.requests.length, 1);
+});
+
+test("HTTP membership barriers and soft paywalls return only reason and original link", async () => {
+  const added = custom();
+  configureNewsSources({ customFeeds: [added], feeds: [added.id], speechLanguage: "ja" });
+  const robots = "https://news.example.org/robots.txt";
+  const article = "https://news.example.org/story";
+  for (const status of [401, 402, 403]) {
+    const denied = fakeNetwork({ [robots]: { status: 404 }, [article]: { status } });
+    const result = await fetchArticle(article, denied.network);
+    assert.equal(typeof result, "string");
+    assert.match(result, /access or was denied.*Original link/);
+    assert.match(result, /news\.example\.org\/story/);
+  }
+  for (const page of [
+    { body: `${ARTICLE}<script type="application/ld+json">{"isAccessibleForFree":false}</script>`,
+      headers: { "content-type": "text/html" } },
+    { body: `${ARTICLE}<div class="paywall">Subscribe to continue reading</div>`,
+      headers: { "content-type": "text/html" } },
+    { body: `${ARTICLE}<p>Sign in to continue reading</p>`,
+      headers: { "content-type": "text/html" } },
+    { body: ARTICLE, headers: { "content-type": "text/html", "x-paywall": "subscriber-required" } },
+  ]) {
+    const soft = fakeNetwork({ [robots]: { status: 404 }, [article]: page });
+    const result = await fetchArticle(article, soft.network);
+    assert.equal(typeof result, "string");
+    assert.match(result, /subscription or membership.*Original link/);
+    assert.doesNotMatch(result, /The story describes/);
+    assert.deepEqual(soft.requests.map((request) => request.url), [robots, article]);
+    assert.ok(soft.requests.every((request) => !request.options.headers.Cookie && !request.options.headers.Authorization));
+  }
+  const login = "https://news.example.org/subscribe/";
+  const redirect = fakeNetwork({
+    [robots]: { status: 404 },
+    [article]: { status: 302, headers: { location: login } },
+  });
+  assert.match(await fetchArticle(article, redirect.network), /subscription or membership.*Original link/);
+  assert.deepEqual(redirect.requests.map((request) => request.url), [robots, article], "never GET the known subscription page");
+  const direct = fakeNetwork({});
+  assert.match(await fetchArticle(login, direct.network), /subscription or membership.*Original link/);
+  assert.equal(direct.requests.length, 0);
+});
+
+test("feed-only sources expose metadata, not full article content embedded in Atom or RSS", async () => {
+  const source = CATALOG.feeds.find((feed) => feed.id === "osaka_general");
+  assert.ok(source);
+  assert.ok(!CATALOG.defaultFeeds.ja.includes(source.id));
+  const atom = ATOM.replace("<summary>First light</summary>", "<summary>First light</summary><content>Full story not licensed</content>");
+  const stub = fakeNetwork({ [source.url]: { body: atom } });
+  const headlines = await fetchHeadlines(source.id, 5, 200, stub.network);
+  assert.equal(headlines.articleAccess, "feed-only");
+  assert.equal(headlines.items[0].summary, "First light");
+  assert.doesNotMatch(JSON.stringify(headlines), /Full story not licensed/);
+  const rss = `<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>News</title>
+    <item><title>News</title><link>https://www.pref.osaka.lg.jp/story</link>
+    <description><![CDATA[<p>Short feed summary</p>]]></description><content:encoded><![CDATA[Full story not licensed]]></content:encoded></item></channel></rss>`;
+  const rssResult = await fetchHeadlines(source.id, 5, 200, fakeNetwork({ [source.url]: { body: rss } }).network);
+  assert.equal(rssResult.items[0].summary, "Short feed summary");
+  assert.doesNotMatch(JSON.stringify(rssResult), /Full story not licensed/);
+  assert.ok(CATALOG.feeds.some((feed) => feed.language === "ja" && feed.category === "business"));
+  assert.ok(CATALOG.feeds.some((feed) => feed.language === "ja" && feed.category === "lifestyle"));
+  assert.equal(CATALOG.feeds.some((feed) => feed.language === "ja" && feed.category === "science"), false);
 });
 
 test("saved settings migrate custom IDs, preserve defaults and reject malformed hosts", () => {
@@ -246,6 +432,9 @@ test("saved settings migrate custom IDs, preserve defaults and reject malformed 
     assert.deepEqual(settings.all.customFeeds, [added]);
     assert.equal(settings.isValid("feeds", ["github_blog", added.id]), true);
     assert.equal(settings.isValid("customFeeds", [{ ...added, siteHost: "private.example.org" }]), false);
+    assert.equal(settings.isValid("customFeeds", [{
+      ...added, siteUrl: "https://www.theguardian.com/", siteHost: "www.theguardian.com",
+    }]), false, "saved settings cannot re-enable a prohibited publisher");
     settings.update({ customFeeds: [], feeds: ["github_blog"] });
     assert.deepEqual(new Settings(dir).all.customFeeds, []);
     assert.deepEqual(new Settings(dir).all.feeds, ["github_blog"]);

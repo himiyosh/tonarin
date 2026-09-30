@@ -102,6 +102,7 @@ const EXTERNAL_LINKS = {
   "news-nsf": "https://www.nsf.gov/policies/digital",
   "news-digital-policy": "https://www.digital.go.jp/copyright-policy",
   "news-soumu-policy": "https://www.soumu.go.jp/menu_kyotsuu/policy/tyosaku.html",
+  "news-osaka-policy": "https://www.pref.osaka.lg.jp/o070050/koho/information/use.html",
 };
 
 // --- environment and .env (development fallback) -----------------------------------------------------------
@@ -1386,6 +1387,7 @@ async function runSmokeTest() {
         document.querySelector('[data-section="news"]').click();
         const page = document.getElementById("section-news");
         const sourceSwitches = page.querySelectorAll('input[role="switch"]').length;
+        const emptyScience = page.querySelector('[data-news-empty-category="science"] .desc')?.textContent;
         const url = page.querySelector('input.news-url');
         const fields = page.querySelectorAll(".news-add-controls select").length;
         await window.pet.settings.set({ feeds: [] });
@@ -1394,11 +1396,12 @@ async function runSmokeTest() {
         page.querySelector(".news-add-controls button").click();
         const invalidUrlVisible = !!page.querySelector(".message.error")?.textContent;
         await window.pet.settings.set({ feeds: null });
-        return { visible: !page.hidden, sourceSwitches, fields, emptyVisible, invalidUrlVisible };
+        return { visible: !page.hidden, sourceSwitches, emptyScience, fields, emptyVisible, invalidUrlVisible };
       })()`);
       if (!report.news.visible || report.news.sourceSwitches < 17 || report.news.fields !== 2 ||
+          !["候補なし", "No sources available"].includes(report.news.emptyScience) ||
           !report.news.emptyVisible || !report.news.invalidUrlVisible) {
-        smokeProblems.push("the news settings could not show source choices, an empty state and URL validation");
+        smokeProblems.push("the news settings could not show source choices, empty categories, an empty state and URL validation");
       }
     } catch (error) {
       smokeProblems.push(`news settings test failed: ${error instanceof Error ? error.message : String(error)}`);

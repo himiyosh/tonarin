@@ -1,7 +1,7 @@
 import type { LookupAddress } from "node:dns";
 import { lookup } from "node:dns/promises";
 import https, { type RequestOptions } from "node:https";
-import type { ClientRequest, IncomingMessage } from "node:http";
+import type { ClientRequest, IncomingHttpHeaders, IncomingMessage } from "node:http";
 import { BlockList, isIP } from "node:net";
 
 const BLOCKED_V4 = new BlockList();
@@ -38,11 +38,12 @@ const INTERNAL_SUFFIXES = [".localhost", ".local", ".lan", ".internal", ".home.a
 const MAX_URL_LENGTH = 2048;
 const MAX_REDIRECTS = 4;
 const FETCH_TIMEOUT_MS = 12_000;
+export const NEWS_USER_AGENT = "Tonarin-news/0.2 (RSS reader)";
 
-export type NewsFetchCode = "url" | "address" | "dns" | "network" | "timeout" | "http" | "size" | "redirect" | "encoding" | "feed" | "config";
+export type NewsFetchCode = "url" | "address" | "dns" | "network" | "timeout" | "http" | "size" | "redirect" | "encoding" | "feed" | "config" | "rights" | "robots" | "paywall";
 
 export class NewsFetchError extends Error {
-  constructor(message: string, readonly code: NewsFetchCode) {
+  constructor(message: string, readonly code: NewsFetchCode, readonly httpStatus?: number) {
     super(message);
     this.name = "NewsFetchError";
   }
@@ -94,12 +95,13 @@ export interface NewsResource {
   url: URL;
   bytes: Buffer;
   contentType: string;
+  headers: IncomingHttpHeaders;
 }
 
 export interface NewsRequest {
   limitBytes: number;
   signal?: AbortSignal;
-  allowRedirect?: (url: URL) => boolean;
+  allowRedirect?: (url: URL) => boolean | Promise<boolean>;
 }
 
 function connectedToPinnedAddress(actual: string | undefined, pinned: LookupAddress): boolean {
@@ -174,7 +176,7 @@ export async function fetchPublicHttps(value: string | URL, options: NewsRequest
             rejectUnauthorized: true,
             family: pinned.family,
             lookup: (_host, _options, callback) => callback(null, pinned.address, pinned.family),
-            headers: { "User-Agent": "Tonarin-news/0.2 (RSS reader)", "Accept-Encoding": "identity", Connection: "close" },
+            headers: { "User-Agent": NEWS_USER_AGENT, "Accept-Encoding": "identity", Connection: "close" },
             signal,
           },
           resolve,
@@ -210,18 +212,18 @@ export async function fetchPublicHttps(value: string | URL, options: NewsRequest
         if (!(error instanceof NewsFetchError || error instanceof TypeError)) throw error;
         throw new NewsFetchError("The news site redirected to a non-public HTTPS address.", "redirect");
       }
-      if (options.allowRedirect && !options.allowRedirect(url)) {
-        throw new NewsFetchError("The article redirected outside its allowed site.", "redirect");
+      if (options.allowRedirect && !(await withAbort(Promise.resolve(options.allowRedirect(url)), signal))) {
+        throw new NewsFetchError("The news resource redirected outside its allowed site.", "redirect");
       }
       continue;
     }
     if (status !== 200) {
       response.destroy();
-      throw new NewsFetchError(`The news site returned HTTP ${status}.`, "http");
+      throw new NewsFetchError(`The news site returned HTTP ${status}.`, "http", status);
     }
     const contentType = String(response.headers["content-type"] ?? "");
     try {
-      return { url, bytes: await readResponse(response, options.limitBytes, signal), contentType };
+      return { url, bytes: await readResponse(response, options.limitBytes, signal), contentType, headers: response.headers };
     } catch (error) {
       response.destroy();
       if (signal.aborted) throw new NewsFetchError("The news site took too long to respond.", "timeout");

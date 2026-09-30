@@ -23,7 +23,7 @@ const ICONS = {
   usage: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M14.6 9.3c-.5-.9-1.5-1.4-2.6-1.4-1.5 0-2.6.8-2.6 1.9 0 1.2 1.1 1.7 2.6 2s2.6.8 2.6 2-1.1 2-2.6 2c-1.2 0-2.2-.6-2.7-1.5M12 6.1v1.8M12 16.1v1.8"/></svg>',
   about: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.6v.2"/></svg>',
 };
-const OSS = ["Electron", "ws", "@github/copilot-sdk", "@modelcontextprotocol/client", "@mozilla/readability", "linkedom", "rss-parser", "zod", "tsx", "TypeScript"];
+const OSS = ["Electron", "ws", "@github/copilot-sdk", "@modelcontextprotocol/client", "@mozilla/readability", "linkedom", "robots-parser", "rss-parser", "zod", "tsx", "TypeScript"];
 
 let snap;
 let current = SECTIONS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "general";
@@ -31,12 +31,13 @@ let syncers = []; // functions that refresh controls from the latest snapshot wi
 let codexPets = [];
 const svgCache = new Map();
 const NEWS_CATEGORIES = ["general", "business", "science", "lifestyle", "technology"];
-const NEWS_ERRORS = new Set(["url", "address", "dns", "network", "timeout", "http", "size", "redirect", "encoding", "feed", "config", "duplicate", "limit", "selection"]);
+const NEWS_ERRORS = new Set(["url", "address", "dns", "network", "timeout", "http", "size", "redirect", "encoding", "feed", "config", "rights", "duplicate", "limit", "selection"]);
 const NEWS_CREDIT_LINKS = {
   "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/": "news-ogl",
   "https://www.nsf.gov/policies/digital": "news-nsf",
   "https://www.digital.go.jp/copyright-policy": "news-digital-policy",
   "https://www.soumu.go.jp/menu_kyotsuu/policy/tyosaku.html": "news-soumu-policy",
+  "https://www.pref.osaka.lg.jp/o070050/koho/information/use.html": "news-osaka-policy",
 };
 let newsFeedback;
 let newsMessage;
@@ -383,6 +384,7 @@ function sectionNews() {
     const details = [
       t(`news.category.${feed.category}`),
       "siteHost" in feed ? t("news.siteHost", { host: feed.siteHost }) : feed.hosts.join(", "),
+      ...(!("siteHost" in feed) && feed.articleAccess === "feed-only" ? [t("news.feedOnly")] : []),
       ...("siteHost" in feed && new URL(feed.url).hostname !== feed.siteHost
         ? [t("news.feedHost", { host: new URL(feed.url).hostname })] : []),
     ].join(" · ");
@@ -434,6 +436,17 @@ function sectionNews() {
       el("div", { class: "label" }, el("div", { class: "title", text: t(`news.category.${category}`) }), count),
       el("div", { class: "control" }, el("label", { class: "switch" }, input, el("span", { class: "track" }))),
     );
+  };
+  const builtInRows = (language) => {
+    const feeds = snap.catalog.feeds.filter((feed) => feed.language === language);
+    return [
+      ...feeds.map(feedRow),
+      ...NEWS_CATEGORIES.filter((category) => !feeds.some((feed) => feed.category === category)).map((category) => {
+        const emptyRow = row(t(`news.category.${category}`), t("news.noCandidates"));
+        emptyRow.dataset.newsEmptyCategory = category;
+        return emptyRow;
+      }),
+    ];
   };
   const defaultsNote = el("div", { class: "notice info", text: t("news.usingDefaults") });
   sync(() => (defaultsNote.hidden = snap.values.feeds !== null));
@@ -506,7 +519,6 @@ function sectionNews() {
   });
   const credits = [...new Map(snap.catalog.feeds.filter((feed) => feed.attribution)
     .map((feed) => [feed.attribution.url, feed.attribution])).values()];
-  const missingJapanese = NEWS_CATEGORIES.filter((id) => !snap.catalog.feeds.some((feed) => feed.language === "ja" && feed.category === id));
   return [
     el("h1", { text: t("news.title") }),
     el("p", { class: "lead", text: t("news.desc") }),
@@ -529,12 +541,9 @@ function sectionNews() {
     el("div", { class: "group" },
       snap.values.customFeeds.length ? snap.values.customFeeds.map(feedRow) : el("div", { class: "empty", text: t("news.customEmpty") })),
     el("h2", { text: t("news.ja") }),
-    ...(missingJapanese.length ? [el("div", { class: "notice info", text: t("news.jaGap", {
-      topics: missingJapanese.map((id) => t(`news.category.${id}`)).join(getLanguage() === "ja" ? "・" : ", "),
-    }) })] : []),
-    el("div", { class: "group" }, snap.catalog.feeds.filter((f) => f.language === "ja").map(feedRow)),
+    el("div", { class: "group" }, builtInRows("ja")),
     el("h2", { text: t("news.en") }),
-    el("div", { class: "group" }, snap.catalog.feeds.filter((f) => f.language === "en").map(feedRow)),
+    el("div", { class: "group" }, builtInRows("en")),
     ...(credits.length ? [
       el("h2", { text: t("news.credits") }),
       el("div", { class: "group" }, credits.map((credit) =>

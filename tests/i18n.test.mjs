@@ -61,7 +61,10 @@ test("news settings labels, failures and licensing credits exist in both languag
   const english = messages.slice(messages.indexOf("\n  en: {"));
   const keys = (text) => [...new Set([...text.matchAll(/^\s+"(news\.[\w.]+)":/gm)].map((match) => match[1]))].sort();
   assert.deepEqual(keys(japanese), keys(english));
-  for (const key of ["news.error.url", "news.error.feed", "news.empty", "news.hostLimit", "news.credits"]) {
+  for (const key of ["news.error.url", "news.error.feed", "news.error.rights", "news.empty",
+    "news.noCandidates", "news.feedOnly", "news.hostLimit", "news.credits"]) {
     assert.ok(keys(japanese).includes(key), `${key} is translated`);
   }
+  assert.match(japanese, /"news\.noCandidates": "候補なし"/);
+  assert.match(english, /"news\.noCandidates": "No sources available"/);
 });

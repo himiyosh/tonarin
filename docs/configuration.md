@@ -66,22 +66,36 @@ Add either a public HTTPS RSS/Atom URL or a public HTTPS site URL. Tonarin check
 a site without a readable feed. Removing the site revokes its article permission. A feed host is **not** an article
 host: only the exact hostname of the URL you entered is authorized for the added site's `read_article` calls.
 When the feed links to a different article host, the headline works but article text cannot be fetched; add that
-article site's own URL separately only if it also publishes RSS/Atom. The original built-ins retain their previous
-publisher-domain rules; new built-ins use only their listed article hosts.
+article site's own URL separately only if it also publishes RSS/Atom. Original technology built-ins retain their
+publisher-domain matching for the **restriction** (including subdomains); new built-ins list exact article hosts.
+**Every original technology
+built-in and the Osaka feeds are feed-only** because article-body reuse has not been individually licensed.
+This restriction takes precedence over a matching personal feed, including one saved before this version.
+The other listed built-ins with verified article-text reuse terms retain article access. Feeds whose publisher
+explicitly disallows this app's RSS/AI use cannot be added as personal sites or reached through feed redirects.
+Personal feeds with publisher or article links identifying such a source are rejected too; rewritten links on an
+unrelated third-party feed cannot be reliably attributed, so users must still check the publisher's terms.
 
 News fetching uses native HTTPS without a proxy, pins validated public DNS addresses to each socket and
 rechecks the connected IP. Redirects (at most four) undergo the same checks; article redirects must also stay
-on an authorized host. Requests to local/private/link-local networks (including IPv4-mapped IPv6) and compressed
-responses are refused. Feed/site responses are capped at 1 MiB, article HTML at 2 MiB, and requests at 12 seconds
-(15 seconds for discovery). XML DTDs and external entities are refused. Tool results mark headlines, summaries
-and article text as untrusted data, not instructions. Keyword watches continue to check the original 12 feeds
-and also check enabled new and personal sources.
+on the original site hostname. Before a **personal article** GET, Tonarin fetches that site's `robots.txt` over
+the same pinned HTTPS transport (up to 500 KiB) and checks the article path for its `Tonarin-news` user-agent;
+it also checks each article redirect's path. A missing robots.txt (204, 404, 410) has no rules, whereas denial,
+authentication errors, server errors, unreadable policies and network failures stop the article request.
+Requests to local/private/link-local networks (including IPv4-mapped IPv6) and compressed responses are refused.
+Feed/site responses are capped at 1 MiB, article HTML at 2 MiB, and article checks share a 12-second timeout
+(15 seconds for discovery). No cookies or credentials are sent. Anonymous public article GET is allowed after
+these checks; a 401/402/403 response or detectable paywall/membership marker returns the original link and a
+reason **without article text**. Unknown soft paywalls cannot be identified before a GET; Tonarin does not bypass
+login, membership or payment. XML DTDs and external entities are refused. Tool results mark headlines, descriptions
+and permitted article text as untrusted data, not instructions. Feed-only summaries use RSS `description` or Atom
+`summary`, never embedded full-content fields. Keyword watches continue to check the original 12 feeds and also
+check enabled new and personal sources.
 
-As of 2026-09-30, verified Japanese built-ins beyond technology cover **general/administrative updates only**.
-No Japanese business, science or living source with an independently verified applicable reuse permission and
-readable article host is bundled yet; for those topics, add a public RSS/Atom site yourself after checking its
-terms. The topic switches cover available sources from both languages, and the Japanese list shows which ones
-actually publish in Japanese.
+As of 2026-09-30, verified Japanese built-ins beyond technology cover **general, prefectural industry and
+public-life notices**, not large-media reporting. No Japanese science source met the same feed/rights criteria;
+its Japanese category visibly says **候補なし** (or **No sources available** in English UI). The topic switches
+cover available sources from both languages; add a personal feed for other topics only after checking its terms.
 
 The added built-in feeds were checked on 2026-09-30 against the publishers' own feed and reuse pages. The original technology
 feeds and default selection are unchanged. GOV.UK explicitly offers its feeds to other applications and licenses
@@ -93,16 +107,36 @@ exceptions are not licensed by these statements.
 The Digital Agency and MIC apply Japan's [Public Data License 1.0](https://www.digital.go.jp/resources/open_data/public_data_license_v1.0)
 to their published content unless marked otherwise. This permits commercial reuse with source attribution;
 Tonarin labels its summaries as its own adaptations and includes the original article URLs in tool results.
+Osaka Prefecture [offers its RSS in readers](https://www.pref.osaka.lg.jp/o070050/koho/information/rss.html)
+but [reserves article-text rights](https://www.pref.osaka.lg.jp/o070050/koho/information/use.html)
+outside permitted private use or quotation. Tonarin therefore uses its feed titles/descriptions and links
+only, with source attribution; it does not GET Osaka articles.
 
-| Category | Official HTTPS feed | Publisher's feed / article-rights evidence |
-|---|---|---|
-| General / administration (JA) | [Digital Agency updates](https://www.digital.go.jp/rss/news.xml) | [Official RSS listing](https://www.digital.go.jp/rss), [copyright/PDL1.0 policy](https://www.digital.go.jp/copyright-policy) |
-| General / administration (JA) | [MIC updates (Shift_JIS RDF)](https://www.soumu.go.jp/news.rdf) | [Official RSS listing](https://www.soumu.go.jp/menu_kyotsuu/rss_information.html), [copyright/PDL1.0 policy](https://www.soumu.go.jp/menu_kyotsuu/policy/tyosaku.html) |
-| General (EN) | [GOV.UK news](https://www.gov.uk/search/news-and-communications.atom) | [Feed use and OGL terms](https://www.gov.uk/help/terms-conditions), [OGL v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/) |
-| Business (EN) | [HM Treasury news](https://www.gov.uk/search/news-and-communications.atom?organisations%5B%5D=hm-treasury) | [GOV.UK feed and OGL terms](https://www.gov.uk/help/terms-conditions) |
-| Science (EN) | [Science department news](https://www.gov.uk/search/news-and-communications.atom?organisations%5B%5D=department-for-science-innovation-and-technology) | [GOV.UK feed and OGL terms](https://www.gov.uk/help/terms-conditions) |
-| Living / health (EN) | [Health department news](https://www.gov.uk/search/news-and-communications.atom?organisations%5B%5D=department-of-health-and-social-care) | [GOV.UK feed and OGL terms](https://www.gov.uk/help/terms-conditions) |
-| Science (EN) | [NSF news](https://www.nsf.gov/rss/rss_www_news.xml) | [Official RSS listing](https://www.nsf.gov/rss), [text reuse policy](https://www.nsf.gov/policies/digital) |
+| Category | Official HTTPS feed | Publisher's feed / article-rights evidence | Article access |
+|---|---|---|---|
+| General / administration (JA) | [Digital Agency updates](https://www.digital.go.jp/rss/news.xml) | [Official RSS listing](https://www.digital.go.jp/rss), [copyright/PDL1.0 policy](https://www.digital.go.jp/copyright-policy) | Licensed article text |
+| General / administration (JA) | [MIC updates (Shift_JIS RDF)](https://www.soumu.go.jp/news.rdf) | [Official RSS listing](https://www.soumu.go.jp/menu_kyotsuu/rss_information.html), [copyright/PDL1.0 policy](https://www.soumu.go.jp/menu_kyotsuu/policy/tyosaku.html) | Licensed article text |
+| General (JA) | [Osaka latest notices](https://www.pref.osaka.lg.jp/shinchaku/shinchaku.xml) | [Official RSS listing](https://www.pref.osaka.lg.jp/o070050/koho/information/rss.html), [site use / copyright](https://www.pref.osaka.lg.jp/o070050/koho/information/use.html) | Feed-only |
+| Industry / work (JA) | [Osaka business/industry notices](https://www.pref.osaka.lg.jp/shigotosangyou/oshirase/oshirase.xml) | [Official RSS listing](https://www.pref.osaka.lg.jp/o070050/koho/information/rss.html), [site use / copyright](https://www.pref.osaka.lg.jp/o070050/koho/information/use.html) | Feed-only |
+| Living (JA) | [Osaka living/environment notices](https://www.pref.osaka.lg.jp/kurashi/oshirase/oshirase.xml) | [Official RSS listing](https://www.pref.osaka.lg.jp/o070050/koho/information/rss.html), [site use / copyright](https://www.pref.osaka.lg.jp/o070050/koho/information/use.html) | Feed-only |
+| General (EN) | [GOV.UK news](https://www.gov.uk/search/news-and-communications.atom) | [Feed use and OGL terms](https://www.gov.uk/help/terms-conditions), [OGL v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/) | Licensed article text |
+| Business (EN) | [HM Treasury news](https://www.gov.uk/search/news-and-communications.atom?organisations%5B%5D=hm-treasury) | [GOV.UK feed and OGL terms](https://www.gov.uk/help/terms-conditions) | Licensed article text |
+| Science (EN) | [Science department news](https://www.gov.uk/search/news-and-communications.atom?organisations%5B%5D=department-for-science-innovation-and-technology) | [GOV.UK feed and OGL terms](https://www.gov.uk/help/terms-conditions) | Licensed article text |
+| Living / health (EN) | [Health department news](https://www.gov.uk/search/news-and-communications.atom?organisations%5B%5D=department-of-health-and-social-care) | [GOV.UK feed and OGL terms](https://www.gov.uk/help/terms-conditions) | Licensed article text |
+| Science (EN) | [NSF news](https://www.nsf.gov/rss/rss_www_news.xml) | [Official RSS listing](https://www.nsf.gov/rss), [text reuse policy](https://www.nsf.gov/policies/digital) | Licensed government-authored text |
+
+**Large-media gap:** a working RSS URL is not permission to send its metadata to an AI assistant. The
+[Guardian terms §3](https://www.theguardian.com/help/terms-of-service) explicitly forbid AI synthesis
+of associated metadata. [Yahoo!ニュース RSS conditions](https://news.yahoo.co.jp/rss) forbid publishing
+an RSS-derived application. The [BBC RSS licence §2.4](https://news.bbc.co.uk/sport2/hi/help/rss/4517815.stm)
+forbids summaries, and the available licence is old; current eligible AI use could not be established.
+[NPR's current Content Feeds and Use of Content terms](https://www.npr.org/about-npr/179876898/terms-of-use)
+permit limited personal-app display but bar altering content/derivatives and using it to build or train AI
+systems, so its use for Tonarin's AI summaries is not confidently licensed. These publishers are not
+built-ins, and directly adding their RSS/hosts does not bypass those restrictions. Bloomberg RSS/terms,
+an official Nikkei RSS, and a compatible NHK/Asahi AI-use basis were not independently verified; none
+was added. The Government Public Relations portal's RSS and terms pages returned 403 when checked,
+so they were likewise not bundled.
 
 ### Pet
 

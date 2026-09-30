@@ -13,6 +13,7 @@ const electronStorage = () => require("electron").safeStorage;
 
 const LANGUAGES = ["auto", "ja", "en"];
 const FEED_IDS = new Set(catalog.feeds.map((feed) => feed.id));
+const prohibitedFeedHost = (hostname) => catalog.prohibitedFeedHosts.some((host) => hostname === host || hostname.endsWith(`.${host}`));
 const NEWS_CATEGORIES = new Set(["technology", "general", "business", "science", "lifestyle"]);
 const VOICE_IDS = new Set(catalog.voices.map((voice) => voice.id));
 const isBool = (value) => typeof value === "boolean";
@@ -31,6 +32,7 @@ function isCustomFeed(feed) {
       site.protocol === "https:" && source.protocol === "https:" &&
       !site.username && !site.password && !source.username && !source.password &&
       !site.hostname.endsWith(".") && !source.hostname.endsWith(".") &&
+      !prohibitedFeedHost(site.hostname) && !prohibitedFeedHost(source.hostname) &&
       feed.siteHost === site.hostname && !FEED_IDS.has(feed.id)
     );
   } catch {
