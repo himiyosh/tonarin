@@ -212,9 +212,12 @@ confirmation demonstrate consent without fetching real mail or generating an AI 
 [mock mail boundaries](docs/configuration.md#mail-prototype-mockdemo).
 
 In **Settings → News**, switch topics or individual sources on and off, or add a public HTTPS site or RSS/Atom URL.
-Tonarin discovers advertised feeds; sites without one cannot be added. Your original news choices remain unchanged,
-and new built-in topics are opt-in. The original technology feeds and Osaka notices are **feed-only**: adding the
-same site yourself never unlocks its article text. For other personal sources, an article can be read only from
+The add form is near the top and shows how many of the 10 personal-site slots remain. Tonarin discovers advertised
+feeds; sites without one cannot be added. Headlines and keyword alerts check only the enabled sites; with all sites
+off, no feed is fetched and a scheduled keyword check records an error explaining how to turn sources back on.
+Your original news choices remain unchanged, and new built-in topics are opt-in. The original technology feeds and
+Osaka notices are **feed-only**: adding the same site yourself never unlocks their article text. For other personal
+sources, an article can be read only from
 the **exact host you entered** after a robots.txt check, without credentials or paywall bypass; a feed hosted
 elsewhere does not authorize its article hosts. Japanese general, industry and living notices have built-in
 options, while science currently has no eligible verified Japanese source and shows **候補なし**. See
@@ -239,6 +242,8 @@ Environment variables for development and for the standalone proxy are listed in
 | `npm run icon` | Rebuild the Liquid Glass icon (needs Xcode 26+) |
 | `npm run icon:derive` | Rebuild the Windows icons and the download page images from the app icon (needs Pillow) |
 | `npm run hooks` | Enable the repo's Git hooks (blocks direct pushes to `main`) |
+
+Packaged smoke accepts a signed-out Copilot runtime, but requires an actual sign-in status response. If the first check stalls, the proxy retries once only after the runtime answers a separate status probe; a runtime that stays unavailable still fails.
 
 ```text
 tonarin/

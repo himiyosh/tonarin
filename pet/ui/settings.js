@@ -25,6 +25,16 @@ const ICONS = {
   usage: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M14.6 9.3c-.5-.9-1.5-1.4-2.6-1.4-1.5 0-2.6.8-2.6 1.9 0 1.2 1.1 1.7 2.6 2s2.6.8 2.6 2-1.1 2-2.6 2c-1.2 0-2.2-.6-2.7-1.5M12 6.1v1.8M12 16.1v1.8"/></svg>',
   about: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.6v.2"/></svg>',
 };
+const BILLING_ICONS = {
+  talk: ICONS.voice,
+  listening: '<svg viewBox="0 0 24 24"><path d="M4 15V9M8 18V6M12 20V4M16 17V7M20 15V9"/></svg>',
+  mute: '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M4 4l16 16"/></svg>',
+  sleep: '<svg viewBox="0 0 24 24"><path d="M19.5 15.7A8.5 8.5 0 0 1 8.3 4.5 8.5 8.5 0 1 0 19.5 15.7z"/></svg>',
+  scheduled: ICONS.automations,
+  quit: '<svg viewBox="0 0 24 24"><path d="M12 2.5v9M6 6.7a8 8 0 1 0 12 0"/></svg>',
+  copilot: '<svg viewBox="0 0 24 24"><path d="m12 2 2.6 7.4L22 12l-7.4 2.6L12 22l-2.6-7.4L2 12l7.4-2.6z"/></svg>',
+  data: ICONS.news,
+};
 const OSS = ["Electron", "ws", "@github/copilot-sdk", "@modelcontextprotocol/client", "@mozilla/readability", "linkedom", "robots-parser", "rss-parser", "zod", "tsx", "TypeScript"];
 
 let snap;
@@ -34,6 +44,7 @@ let cancelMailMockSpeech = () => {};
 let codexPets = [];
 const svgCache = new Map();
 const NEWS_CATEGORIES = ["general", "business", "science", "lifestyle", "technology"];
+const MAX_CUSTOM_FEEDS = 10;
 const NEWS_ERRORS = new Set(["url", "address", "dns", "network", "timeout", "http", "size", "redirect", "encoding", "feed", "config", "rights", "duplicate", "limit", "selection"]);
 const MAIL_MOCK_ERRORS = new Set(["invalid", "off", "already-connected", "pending", "no-pending", "expired",
   "state-mismatch", "pkce-mismatch", "code-invalid", "storage", "storage-unavailable", "token-expired",
@@ -405,12 +416,14 @@ function sectionNews() {
         onclick: async (event) => {
           if (!window.confirm(t("news.removeConfirm", { name: feed.name }))) return;
           const button = event.currentTarget;
+          const restoreFocus = document.activeElement === button;
           button.disabled = true;
           try {
             const result = await api.news.remove(feed.id);
             if (result.ok) newsFeedback = { key: "news.removed", type: "ok", vars: { name: feed.name } };
             if (result.snapshot) onSnapshot(result.snapshot);
             if (!result.ok) newsSay(result.saved ? "news.applyFailed" : "news.changeFailed", "error");
+            else if (restoreFocus && current === "news") document.getElementById("news-custom-heading")?.focus({ preventScroll: true });
           } catch {
             newsSay("news.changeFailed", "error");
           } finally {
@@ -455,6 +468,14 @@ function sectionNews() {
       }),
     ];
   };
+  const scopeNote = el("div", { class: "notice info news-scope" });
+  sync(() => {
+    const chosen = new Set(enabled());
+    scopeNote.textContent = t("news.watching", {
+      builtIn: snap.catalog.feeds.filter((feed) => chosen.has(feed.id)).length,
+      custom: snap.values.customFeeds.filter((feed) => chosen.has(feed.id)).length,
+    });
+  });
   const defaultsNote = el("div", { class: "notice info", text: t("news.usingDefaults") });
   sync(() => (defaultsNote.hidden = snap.values.feeds !== null));
   const empty = el("div", { class: "notice warn news-empty", text: t("news.empty") });
@@ -489,6 +510,11 @@ function sectionNews() {
   sync(() => {
     if (newsFeedback) newsSay(newsFeedback.key, newsFeedback.type, newsFeedback.vars);
   });
+  const capacityNote = el("p", { class: "lead small news-capacity" });
+  sync(() => {
+    const count = snap.values.customFeeds.length;
+    capacityNote.textContent = t("news.capacity", { count, max: MAX_CUSTOM_FEEDS, remaining: MAX_CUSTOM_FEEDS - count });
+  });
   const url = el("input", {
     type: "url", class: "news-url", maxlength: "2048", required: true, spellcheck: false, autocomplete: "url",
     placeholder: t("news.sitePlaceholder"), "aria-label": t("news.siteUrl"),
@@ -498,20 +524,33 @@ function sectionNews() {
   language.value = snap.speechLanguage;
   const category = el("select", { "aria-label": t("news.siteCategory") },
     NEWS_CATEGORIES.map((id) => el("option", { value: id, text: t(`news.category.${id}`) })));
+  let adding = false;
   const addButton = el("button", {
     class: "btn primary", type: "button", text: t("news.add"),
     onclick: async () => {
+      if (adding) return;
+      if (snap.values.customFeeds.length >= MAX_CUSTOM_FEEDS) {
+        newsSay("news.error.limit", "error");
+        return;
+      }
       if (!/^https:\/\//i.test(url.value.trim()) || !url.checkValidity()) {
         newsSay("news.error.url", "error");
         url.focus();
         return;
       }
+      const restoreFocus = document.activeElement === addButton || document.activeElement === url;
+      adding = true;
       addButton.disabled = true;
       addButton.textContent = t("news.adding");
       try {
         const result = await api.news.add({ url: url.value.trim(), language: language.value, category: category.value });
         if (result.ok) newsFeedback = { key: "news.added", type: "ok", vars: { name: result.feed.name } };
         if (result.snapshot) onSnapshot(result.snapshot);
+        if (result.ok && result.snapshot && restoreFocus && current === "news") {
+          const nextUrl = document.querySelector("#section-news .news-url");
+          nextUrl.value = "";
+          nextUrl.focus();
+        }
         if (!result.ok) {
           const key = NEWS_ERRORS.has(result.code) ? `news.error.${result.code}` : "news.addFailed";
           newsSay(result.saved ? "news.applyFailed" : key, "error", { message: result.message ?? "" });
@@ -519,24 +558,25 @@ function sectionNews() {
       } catch (error) {
         newsSay("news.addFailed", "error", { message: error instanceof Error ? error.message : String(error) });
       } finally {
-        addButton.disabled = false;
+        adding = false;
+        addButton.disabled = snap.values.customFeeds.length >= MAX_CUSTOM_FEEDS;
         addButton.textContent = t("news.add");
       }
     },
   });
+  sync(() => (addButton.disabled = adding || snap.values.customFeeds.length >= MAX_CUSTOM_FEEDS));
   const credits = [...new Map(snap.catalog.feeds.filter((feed) => feed.attribution)
     .map((feed) => [feed.attribution.url, feed.attribution])).values()];
   return [
     el("h1", { text: t("news.title") }),
     el("p", { class: "lead", text: t("news.desc") }),
+    scopeNote,
     defaultsNote,
     syncNotice,
     empty,
-    el("h2", { text: t("news.categories") }),
-    el("p", { class: "lead small", text: t("news.categoryDesc") }),
-    el("div", { class: "group" }, NEWS_CATEGORIES.map(categoryRow)),
     el("h2", { text: t("news.addTitle") }),
     el("p", { class: "lead small", text: t("news.addDesc") }),
+    capacityNote,
     el("div", { class: "group" },
       el("div", { class: "row stack" },
         el("label", { class: "title", text: t("news.siteUrl") }, url),
@@ -544,7 +584,10 @@ function sectionNews() {
         newsMessage,
       )),
     el("p", { class: "lead small news-host-note", text: t("news.hostLimit") }),
-    el("h2", { text: t("news.custom") }),
+    el("h2", { text: t("news.categories") }),
+    el("p", { class: "lead small", text: t("news.categoryDesc") }),
+    el("div", { class: "group" }, NEWS_CATEGORIES.map(categoryRow)),
+    el("h2", { id: "news-custom-heading", tabindex: "-1", text: t("news.custom") }),
     el("div", { class: "group" },
       snap.values.customFeeds.length ? snap.values.customFeeds.map(feedRow) : el("div", { class: "empty", text: t("news.customEmpty") })),
     el("h2", { text: t("news.ja") }),
@@ -1998,7 +2041,22 @@ function sectionUsage() {
     stateDesc.textContent = t(`usage.state.${state}Desc`);
     stateStatus.textContent = t(`usage.state.${state}Pill`);
   });
-  const BILLED = ["talk", "listening", "mute", "sleep", "scheduled", "quit", "copilot", "data"];
+  const BILLED_GROUPS = [
+    ["conversation", ["talk", "listening", "mute", "sleep"]],
+    ["automation", ["scheduled", "quit"]],
+    ["information", ["copilot", "data"]],
+  ];
+  const billedItem = (key) => {
+    const icon = el("span", { class: "usage-explainer-icon", "aria-hidden": "true" });
+    icon.innerHTML = BILLING_ICONS[key];
+    return el("li", {},
+      icon,
+      el("div", { class: "usage-explainer-content" },
+        el("div", { class: "usage-explainer-head" },
+          el("h4", { text: t(`usage.billed.${key}`) }),
+          el("span", { class: "usage-explainer-status", text: t(`usage.billed.${key}Pill`) })),
+        el("p", { text: t(`usage.billed.${key}Desc`) })));
+  };
   const link = (key, target) => el("button", { class: "link", type: "button", text: t(key), onclick: () => api.open(target) });
   queueMicrotask(() => void loadUsage());
   return [
@@ -2009,18 +2067,10 @@ function sectionUsage() {
     el("div", { class: "usage-now" }, el("div", { class: "usage-explainer-head" }, stateTitle, stateStatus), stateDesc),
     el("h2", { id: "usage-billed-heading", text: t("usage.billed") }),
     el("p", { class: "usage-explainer-intro", text: t("usage.billed.intro") }),
-    el(
-      "ul",
-      { class: "usage-explainer", "aria-labelledby": "usage-billed-heading" },
-      BILLED.map((key) =>
-        el(
-          "li",
-          {},
-          el("div", { class: "usage-explainer-head" }, el("h3", { text: t(`usage.billed.${key}`) }), el("span", { class: "usage-explainer-status", text: t(`usage.billed.${key}Pill`) })),
-          el("p", { text: t(`usage.billed.${key}Desc`) }),
-        ),
-      ),
-    ),
+    ...BILLED_GROUPS.map(([group, keys]) =>
+      el("div", { class: "usage-guide-group" },
+        el("h3", { class: "usage-guide-title", id: `usage-billed-${group}`, text: t(`usage.billed.group.${group}`) }),
+        el("ul", { class: "usage-explainer", "aria-labelledby": `usage-billed-${group}` }, keys.map(billedItem)))),
     el(
       "div",
       { class: "section-head" },

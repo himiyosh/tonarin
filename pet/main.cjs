@@ -289,7 +289,8 @@ function startProxy() {
 
 /** Asks the proxy what works (Gemini key present, Copilot signed in) until Copilot has finished starting. */
 async function refreshProxyStatus() {
-  for (let attempt = 0; attempt < 30; attempt++) {
+  // Cover the proxy's 30 s SDK start, 15 s sign-in check, 3 s health probe and 15 s retry.
+  for (let attempt = 0; attempt < 50; attempt++) {
     try {
       const response = await fetch(`http://127.0.0.1:${PORT}/v1/status`, {
         headers: { Authorization: `Bearer ${proxyKey()}` },
