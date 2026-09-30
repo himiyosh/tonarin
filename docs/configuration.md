@@ -89,8 +89,10 @@ these checks; a 401/402/403 response or detectable paywall/membership marker ret
 reason **without article text**. Unknown soft paywalls cannot be identified before a GET; Tonarin does not bypass
 login, membership or payment. XML DTDs and external entities are refused. Tool results mark headlines, descriptions
 and permitted article text as untrusted data, not instructions. Feed-only summaries use RSS `description` or Atom
-`summary`, never embedded full-content fields. Keyword watches continue to check the original 12 feeds and also
-check enabled new and personal sources.
+`summary`, never embedded full-content fields. Keyword watches and ordinary headlines use the same enabled sources,
+including selected new and personal sites; switching a source off stops keyword checks for it too. With no sources
+enabled, neither fetches a feed, and a scheduled keyword check records a no-sources error in automation history
+and notifies the user.
 
 As of 2026-09-30, verified Japanese built-ins beyond technology cover **general, prefectural industry and
 public-life notices**, not large-media reporting. No Japanese science source met the same feed/rights criteria;
