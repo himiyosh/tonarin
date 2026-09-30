@@ -52,6 +52,13 @@ test("the main process says Ctrl on Windows and Control on a Mac", () => {
   assert.match(translator("ja", "win32")("pinchHint"), /Ctrl \+ スクロール/);
   assert.match(translator("en", "darwin")("pinchHint"), /Control \+ scroll/);
   assert.equal(translator("en", "win32")("quit"), "Quit");
+  for (const language of ["ja", "en"]) {
+    const title = translator(language, "win32")("mailMockNotificationTitle");
+    const body = translator(language, "win32")("mailMockNotificationBody", { sender: "Example", subject: "Sample" });
+    assert.match(title, /MOCK\/DEMO/);
+    assert.match(body, /Example/);
+    assert.match(body, /Sample/);
+  }
 });
 
 test("news settings labels, failures and licensing credits exist in both languages", () => {
@@ -67,4 +74,23 @@ test("news settings labels, failures and licensing credits exist in both languag
   }
   assert.match(japanese, /"news\.noCandidates": "候補なし"/);
   assert.match(english, /"news\.noCandidates": "No sources available"/);
+});
+
+test("mock mail labels and consent errors match in both languages without implying a real connection", () => {
+  const source = readFileSync(new URL("../pet/ui/i18n.js", import.meta.url), "utf8");
+  const messages = source.slice(source.indexOf("const MESSAGES = {"), source.indexOf("const WINDOWS_MESSAGES = {"));
+  const japanese = messages.slice(messages.indexOf("\n  ja: {"), messages.indexOf("\n  en: {"));
+  const english = messages.slice(messages.indexOf("\n  en: {"));
+  const keys = (text) => [...new Set([...text.matchAll(/^\s+"(mailMock\.[\w.-]+)":/gm)].map((match) => match[1]))].sort();
+  assert.deepEqual(keys(japanese), keys(english));
+  for (const key of ["mailMock.warning", "mailMock.enable", "mailMock.status.connected",
+    "mailMock.bodyOptIn", "mailMock.aiCheck", "mailMock.error.storage-unavailable"]) {
+    assert.ok(keys(japanese).includes(key), `${key} is translated`);
+  }
+  assert.match(japanese, /"mailMock\.title": ".*MOCK\/DEMO/);
+  assert.match(english, /"mailMock\.title": ".*MOCK\/DEMO/);
+  assert.match(japanese, /"mailMock\.status\.connected": ".*架空/);
+  assert.match(english, /"mailMock\.status\.connected": ".*fictional/);
+  assert.match(japanese, /"mailMock\.readAloudDesc": "初期オフ/);
+  assert.match(english, /"mailMock\.readAloudDesc": "Off by default/);
 });

@@ -58,6 +58,8 @@ const DEFAULTS = {
   mcpServers: [], // MCP connections without their secrets (those are in the keychain as "mcp:<id>")
   feeds: null, // null = the default set for the speech language
   customFeeds: [], // verified RSS/Atom feeds and the exact site hostname the user entered
+  mailMockEnabled: false, // local demo only; never a real mailbox connection
+  mailMockProvider: "gmail",
   launchAtLogin: false,
   migratedLocalPrefs: false,
   proxyKey: "",
@@ -85,6 +87,8 @@ const VALID = {
   ),
   customFeeds: (v) => Array.isArray(v) && v.length <= 10 && v.every(isCustomFeed) &&
     new Set(v.map((feed) => feed.id)).size === v.length && new Set(v.map((feed) => feed.url)).size === v.length,
+  mailMockEnabled: isBool,
+  mailMockProvider: (v) => v === "gmail" || v === "outlook",
   launchAtLogin: isBool,
   migratedLocalPrefs: isBool,
   proxyKey: (v) => typeof v === "string" && v.length <= 200,
@@ -92,7 +96,8 @@ const VALID = {
 
 const SECRET_NAMES = new Set(["geminiApiKey"]);
 // "mcp:<id>" = env values and headers of an MCP connection; "github:<id>" = its GitHub refresh token and expiry times.
-const isSecretName = (name) => SECRET_NAMES.has(name) || /^(mcp|github):[A-Za-z0-9-]{1,40}$/.test(name);
+const isSecretName = (name) => SECRET_NAMES.has(name) || /^(mcp|github):[A-Za-z0-9-]{1,40}$/.test(name) ||
+  /^mailMock:(gmail|outlook)$/.test(name);
 
 function isMcpServer(s) {
   const str = (v, max) => typeof v === "string" && v.length <= max;
@@ -180,7 +185,8 @@ class Settings extends EventEmitter {
   getSecret(name) {
     if (!this.secrets[name]) return undefined;
     const safeStorage = electronStorage();
-    if (!safeStorage.isEncryptionAvailable()) return undefined;
+    if (!safeStorage.isEncryptionAvailable() ||
+        (name.startsWith("mailMock:") && safeStorage.getSelectedStorageBackend?.() === "basic_text")) return undefined;
     try {
       return safeStorage.decryptString(Buffer.from(this.secrets[name], "base64"));
     } catch {
@@ -190,14 +196,19 @@ class Settings extends EventEmitter {
 
   setSecret(name, value) {
     if (!isSecretName(name)) throw new Error(`Unknown secret: ${name}`);
+    const next = { ...this.secrets };
     if (value) {
       const safeStorage = electronStorage();
-      if (!safeStorage.isEncryptionAvailable()) throw new Error("Secure storage (keychain) is not available");
-      this.secrets[name] = safeStorage.encryptString(value).toString("base64");
+      if (!safeStorage.isEncryptionAvailable() ||
+          (name.startsWith("mailMock:") && safeStorage.getSelectedStorageBackend?.() === "basic_text")) {
+        throw new Error("Secure storage is not available");
+      }
+      next[name] = safeStorage.encryptString(value).toString("base64");
     } else {
-      delete this.secrets[name];
+      delete next[name];
     }
-    writeJson(this.secretsFile, this.secrets);
+    writeJson(this.secretsFile, next);
+    this.secrets = next;
     this.emit("change", [`secret:${name}`]);
   }
 }

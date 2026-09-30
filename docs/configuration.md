@@ -20,6 +20,30 @@ Everything is in one folder: `~/Library/Application Support/Tonarin/` on a Mac, 
 On Windows the app itself is installed in `%LOCALAPPDATA%\Programs\tonarin\`. Uninstalling it (Settings → Apps)
 keeps the data folder above.
 
+### Mail prototype (MOCK/DEMO)
+
+**Settings → Mail (MOCK)** is an off-by-default, local-only prototype on Mac and Windows. Choose a Gmail-style or
+Outlook-style fictional account, then start and approve a simulated OAuth authorization-code flow. The main process
+generates a random PKCE verifier, S256 challenge and anti-CSRF state, checks the mock responses, and stores only a
+**fake** one-hour token in `secrets.json` through the existing Electron `safeStorage` helper. If encryption is
+unavailable, authorization fails explicitly instead of saving a plaintext token. Switching providers, turning the
+demo off, or disconnecting clears fake tokens and the current scripted event stream.
+The fake Gmail-style list returns IDs followed by separate sender/subject header responses; the fake
+Graph-style list returns `value` entries with `from.emailAddress` and `subject`. Neither metadata response
+contains a body or attachment.
+
+The list begins with one fictional sender and subject; **Trigger next mock new-mail event** adds at most two more
+fictional entries and requests an OS notification labeled MOCK/DEMO. Read-aloud is off by default and uses only an
+installed **local** system voice through Web Speech in the settings window; if none is available, the UI reports
+that failure instead of sending audio to an online service. Both the body-view opt-in and the separate per-message
+AI-transfer confirmation are simulated, off by default, and held only for the current app session. A body is shown
+only after opt-in and explicit selection; even after the separate confirmation, **no summary is generated and
+nothing is sent to Gemini or Copilot**. The confirmation is not authorization for a future live integration.
+
+This prototype never opens a provider sign-in page, registers an app, requests Gmail/Graph scopes, accesses a real
+mailbox, downloads attachments, sends/deletes/marks mail read, or calls a mail or AI endpoint on its demo path.
+Real mail integration and public distribution require separate decisions and implementation.
+
 ## Environment variables
 
 Put them in `.env` (see [`.env.example`](../.env.example)) or export them. The packaged app does not read `.env`;

@@ -49,6 +49,8 @@ test("usage billing guidance is read-only in both languages while real actions r
     proxy: { running: false, managed: false, status: null },
     pet,
     githubSignIn: false,
+    mailMock: { enabled: false, provider: "gmail", status: "off", account: null, messages: [],
+      remaining: 0, bodyOptIn: false, readAloud: false },
   });
   let onChanged;
   let usageCalls = 0;

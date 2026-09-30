@@ -40,6 +40,7 @@ const { resolveLanguage, translator } = require("./i18n.cjs");
 const { createPets } = require("./pets.cjs");
 const { createDeviceFlow, isTransient } = require("./github.cjs");
 const { layoutFor } = require("./layout.cjs");
+const { createMailMock, MailMockError } = require("./mail-mock.cjs");
 const { Settings, catalog } = require("./settings.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -134,6 +135,7 @@ const CODEX_PETS_DIR = env("CODEX_PETS_DIR", path.join(os.homedir(), ".codex", "
 const pets = createPets(CODEX_PETS_DIR);
 
 let settings; // created when the app is ready (safeStorage needs it)
+let mailMock; // main-process-only fake authorization state and tokens
 let t = translator("ja");
 const uiLanguage = () => resolveLanguage(settings.values.language, app.getLocale());
 const speechLanguage = () => (settings.values.speechLanguage === "auto" ? uiLanguage() : settings.values.speechLanguage);
@@ -375,7 +377,9 @@ function wakePetForDelivery() {
   else sendToPet("wake");
 }
 function notify(title, body) {
-  if (Notification.isSupported()) new Notification({ title: `${APP_NAME}: ${title}`, body: String(body ?? "").slice(0, 200) }).show();
+  if (!Notification.isSupported()) return false;
+  new Notification({ title: `${APP_NAME}: ${title}`, body: String(body ?? "").slice(0, 200) }).show();
+  return true;
 }
 
 function onProxyEvent(event) {
@@ -514,6 +518,7 @@ function snapshot() {
     codexPetsDir: CODEX_PETS_DIR.replace(os.homedir(), "~"),
     pet: petState, // muted / sleeping / connection: the settings window explains what is billed right now
     githubSignIn: Boolean(GITHUB_CLIENT_ID),
+    mailMock: mailMock.snapshot(),
   };
 }
 
@@ -539,6 +544,10 @@ let petState = { muted: false, sleeping: false, conn: "connecting" };
 
 function fromOurPages(event) {
   return event.senderFrame?.url?.startsWith("pet://app/") ?? false;
+}
+
+function fromSettingsPage(event) {
+  return event.sender === settingsWin?.webContents && event.senderFrame?.url?.split("#")[0] === SETTINGS_URL;
 }
 
 function lockDown(contents) {
@@ -1106,12 +1115,42 @@ ipcMain.handle("settings:get", (event) => (fromOurPages(event) ? snapshot() : un
 
 ipcMain.handle("settings:set", async (event, patch) => {
   if (!fromOurPages(event) || !patch || typeof patch !== "object") return snapshot();
+  if (Object.hasOwn(patch, "mailMockEnabled") || Object.hasOwn(patch, "mailMockProvider")) {
+    throw new Error("Mail demo settings require the dedicated mock controls");
+  }
   const { proxyKey: _ignored, customFeeds: _newsSites, ...allowed } = patch; // sites go through verified discovery instead
   if (Object.hasOwn(allowed, "feeds") && !settings.isValid("feeds", allowed.feeds)) throw new Error("Invalid news source selection");
   const changed = settings.update(allowed);
   if (changed.includes("feeds")) await newsSync;
   else if (changed.some((key) => ["language", "speechLanguage"].includes(key))) await newsSync.then(() => true, () => false);
   return snapshot();
+});
+
+ipcMain.handle("settings:mail-mock", (event, input) => {
+  if (!fromSettingsPage(event)) return { ok: false, code: "unauthorized" };
+  try {
+    let result = {};
+    switch (input?.action) {
+      case "enable": mailMock.setEnabled(input.enabled); break;
+      case "provider": mailMock.selectProvider(input.provider); break;
+      case "begin": mailMock.begin(); break;
+      case "approve": mailMock.approve(); break;
+      case "cancel": mailMock.cancel(); break;
+      case "disconnect": mailMock.disconnect(); break;
+      case "next": result = mailMock.nextMail(); break;
+      case "body-opt-in": mailMock.setBodyOptIn(input.enabled); break;
+      case "read-aloud": mailMock.setReadAloud(input.enabled); break;
+      case "body": result = mailMock.viewBody(input.id); break;
+      case "ai-confirmation": result = mailMock.confirmAiTransfer(input.id, input.confirmed); break;
+      default: throw new MailMockError("invalid");
+    }
+    broadcastSettings();
+    return { ok: true, ...result, snapshot: snapshot() };
+  } catch (error) {
+    if (error instanceof MailMockError) return { ok: false, code: error.code, snapshot: snapshot() };
+    console.error("[mail mock] operation failed", error);
+    return { ok: false, code: "internal" };
+  }
 });
 
 ipcMain.handle("settings:add-news-feed", async (event, input) => {
@@ -1407,6 +1446,78 @@ async function runSmokeTest() {
       smokeProblems.push(`news settings test failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
+  if (settingsWin && !settingsWin.isDestroyed() && report.settings?.sections) {
+    try {
+      report.mailMock = await settingsWin.webContents.executeJavaScript(`(async () => {
+        document.querySelector('[data-section="mailMock"]').click();
+        const page = document.getElementById("section-mailMock");
+        const state = (await window.pet.settings.get()).mailMock;
+        const localVoiceLocales = await new Promise((resolve) => {
+          const speech = globalThis.speechSynthesis;
+          if (!speech) return resolve([]);
+          const voices = () => speech.getVoices().filter((voice) => voice.localService).map((voice) => voice.lang).slice(0, 5);
+          let timer;
+          const ready = () => {
+            const available = voices();
+            if (!available.length) return;
+            clearTimeout(timer);
+            speech.removeEventListener("voiceschanged", ready);
+            resolve(available);
+          };
+          speech.addEventListener("voiceschanged", ready);
+          timer = setTimeout(() => {
+            speech.removeEventListener("voiceschanged", ready);
+            resolve(voices());
+          }, 2000);
+          ready();
+        });
+        return {
+          visible: !page.hidden,
+          labeled: page.querySelector("h1").textContent.includes("MOCK/DEMO"),
+          statusLabeled: page.querySelector(".mail-status").textContent.includes("MOCK/DEMO"),
+          off: state.status === "off" && !page.querySelector('input[role="switch"]').checked,
+          empty: !page.querySelector(".mail-message") && page.querySelector(".mail-body-panel").hidden,
+          localVoiceLocales,
+        };
+      })()`);
+      if (!report.mailMock.visible || !report.mailMock.labeled || !report.mailMock.statusLabeled ||
+          !report.mailMock.off || !report.mailMock.empty) {
+        smokeProblems.push("the mock mail screen did not remain labeled, empty and off by default");
+      }
+      report.mailMock.flow = await settingsWin.webContents.executeJavaScript(`(async () => {
+        const demo = window.pet.settings.mailMock;
+        const enabled = await demo.setEnabled(true);
+        const pending = await demo.begin();
+        const canceled = await demo.cancel();
+        const disabled = await demo.setEnabled(false);
+        return {
+          enabled: enabled.ok && enabled.snapshot.mailMock.status === "ready",
+          pending: pending.ok && pending.snapshot.mailMock.status === "pending",
+          canceled: canceled.ok && canceled.snapshot.mailMock.status === "ready",
+          offAgain: disabled.ok && disabled.snapshot.mailMock.status === "off",
+        };
+      })()`);
+      if (!report.mailMock.flow.enabled || !report.mailMock.flow.pending || !report.mailMock.flow.canceled ||
+          !report.mailMock.flow.offAgain) {
+        smokeProblems.push("the local mock authorization steps could not return safely to off");
+      }
+      settingsWin.webContents.setZoomFactor(2);
+      report.mailMock.zoom200 = await settingsWin.webContents.executeJavaScript(`(() => {
+        const content = document.getElementById("content");
+        return {
+          stacked: getComputedStyle(document.querySelector(".app")).flexDirection === "column",
+          fits: content.scrollWidth <= content.clientWidth + 1,
+        };
+      })()`);
+      if (!report.mailMock.zoom200.stacked || !report.mailMock.zoom200.fits) {
+        smokeProblems.push("the mock mail settings overflow at 200% text scaling");
+      }
+    } catch (error) {
+      smokeProblems.push(`mock mail settings test failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      settingsWin.webContents.setZoomFactor(1);
+    }
+  }
   // The proxy, and the Copilot runtime behind it (it can take a while to start).
   let status;
   for (let attempt = 0; attempt < 90 && (!status || status.copilot === "starting"); attempt++) {
@@ -1452,6 +1563,7 @@ app.whenReady().then(async () => {
   watchEventLoop();
   if (!process.env.TONARIN_USER_DATA) migrateFromPreviousName(); // only into the app's usual folder
   settings = new Settings(app.getPath("userData"));
+  mailMock = createMailMock({ settings, notify, translate: (key, vars) => t(key, vars) });
   t = translator(uiLanguage(), process.platform);
   settings.on("change", (keys) => {
     if (keys.includes("language")) {
