@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CopilotClient, ToolSet, type CopilotSession, type SessionConfig } from "@github/copilot-sdk";
 import { z } from "zod";
+import { getAuthStatusWithRecovery, withTimeout } from "./copilot-startup.js";
 import { attachLive, type Announcement, type LiveSession, type LiveTool, type NoiseFilter, type SessionOptions } from "./live.js";
 import {
   CATALOG, FEEDS, NEWS_CATEGORIES, asUntrustedNewsData, checkKeywordSources, configureNewsSources, discoverNewsFeed, enabledFeedIds,
@@ -235,19 +236,11 @@ let copilotState: CopilotState = "starting";
 let copilotStarted: Promise<void> = Promise.resolve();
 const copilotUsable = (): boolean => copilotState === "starting" || copilotState === "ready";
 
-function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(message)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
-
 async function startCopilot(): Promise<void> {
   try {
     await withTimeout(client.start(), 30_000, "the Copilot runtime did not start within 30 s");
     if (!BYOK_BASE_URL) {
-      const auth = await withTimeout(client.getAuthStatus(), 15_000, "no answer to the sign-in check within 15 s");
+      const auth = await getAuthStatusWithRecovery(client);
       if (!auth.isAuthenticated) {
         copilotState = "signed-out";
         console.log("[copilot] not signed in: ask_copilot and /v1/chat/completions are off (sign in with the Copilot CLI, then restart)");
