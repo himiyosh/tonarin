@@ -50,6 +50,8 @@ test("usage guidance stays read-only and News settings explain the enabled scope
     proxy: { running: false, managed: false, status: null },
     pet,
     githubSignIn: false,
+    mailMock: { enabled: false, provider: "gmail", status: "off", account: null, messages: [],
+      remaining: 0, bodyOptIn: false, readAloud: false },
   });
   let onChanged;
   let usageCalls = 0;
