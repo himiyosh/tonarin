@@ -108,3 +108,21 @@ test("site data: only pre-releases means the newest one is offered", () => {
   assert.equal(data.latest, "v0.2.0-beta.1");
   assert.deepEqual(siteData([]), { repo: "himiyosh/tonarin", releasesUrl: "https://github.com/himiyosh/tonarin/releases", latest: null, releases: [] });
 });
+
+test("site fine print distinguishes Mac and Windows signing in both languages", () => {
+  const app = readFileSync(new URL("../site/app.js", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../site/index.html", import.meta.url), "utf8");
+  const tails = [...app.matchAll(/^\s+fineTail: (\[[^\r\n]+\]),$/gm)].map(([, text]) => JSON.parse(text));
+  assert.equal(tails.length, 2, "Japanese and English fine print");
+  const [ja, en] = tails;
+
+  assert.match(ja[0], /Mac 版はアドホック署名.*Apple の公証.*Windows 版は未署名.*初回起動時に警告/);
+  assert.match(en[0], /Mac builds are ad hoc signed.*not notarized by Apple.*Windows installers are unsigned.*warning.*first open the app/i);
+  assert.doesNotMatch(ja[0], /署名がまだない/);
+  assert.doesNotMatch(en[0], /builds are not signed yet/i);
+  assert.deepEqual([ja.slice(1), en.slice(1)], [["はじめての起動", "の手順をどうぞ。"], ["the first launch", " steps."]]);
+  assert.match(app, /el\("a", \{ href: "#first-launch", text: link \}\)/);
+  assert.match(page, /<section class="first-run" id="first-launch"/);
+  assert.match(page, /Apple の公証も Windows のコード署名もないため、最初の一度だけ確認が出ます/);
+  assert.match(page, /not notarized by Apple or code signed for Windows yet, so each system asks once/);
+});
