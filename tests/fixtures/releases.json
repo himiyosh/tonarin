@@ -1,0 +1,77 @@
+{
+  "_note": "Synthetic GitHub API response (GET /repos/himiyosh/tonarin/releases with body_html) for tests and for trying the download page before a real release exists: npm run site -- --fixture tests/fixtures/releases.json --serve. Sizes, dates and digests are made up.",
+  "releases": [
+    {
+      "tag_name": "v0.3.0",
+      "name": "v0.3.0",
+      "draft": true,
+      "prerelease": false,
+      "published_at": null,
+      "html_url": "https://github.com/himiyosh/tonarin/releases/tag/untagged-1",
+      "body_html": "<p>Draft: never shown.</p>",
+      "assets": []
+    },
+    {
+      "tag_name": "v0.2.0",
+      "name": "v0.2.0",
+      "draft": false,
+      "prerelease": false,
+      "published_at": "2026-10-01T09:00:00Z",
+      "html_url": "https://github.com/himiyosh/tonarin/releases/tag/v0.2.0",
+      "body_html": "<h2>v0.2.0 Highlights</h2><p>The release body from GitHub.</p>",
+      "assets": [
+        {
+          "name": "Tonarin-0.2.0-win-x64-setup.exe",
+          "size": 121634816,
+          "digest": "sha256:fece9151bbd125f32eb78087a3b1d0a6f95d4385a4855bb46554595a67d0b31e",
+          "browser_download_url": "https://github.com/himiyosh/tonarin/releases/download/v0.2.0/Tonarin-0.2.0-win-x64-setup.exe"
+        },
+        {
+          "name": "Tonarin-0.2.0-win-arm64-setup.exe",
+          "size": 119537664,
+          "digest": "sha256:e38bfa3b73c53dac806ebbaaaa776437378d2299d61cef67830499e1cfea7400",
+          "browser_download_url": "https://github.com/himiyosh/tonarin/releases/download/v0.2.0/Tonarin-0.2.0-win-arm64-setup.exe"
+        },
+        {
+          "name": "Tonarin-0.2.0-mac-arm64.zip",
+          "size": 141557760,
+          "digest": "sha256:6b55e9938ae043e624f5189d2eb3714b1800594932cc60720443b5ca9ef2cd92",
+          "browser_download_url": "https://github.com/himiyosh/tonarin/releases/download/v0.2.0/Tonarin-0.2.0-mac-arm64.zip"
+        },
+        {
+          "name": "Tonarin-0.2.0-mac-arm64.dmg",
+          "size": 146800640,
+          "digest": "sha256:c1e5c13964ee7845e026de63fa9752d03fd611082ed958c394240d48809ec697",
+          "browser_download_url": "https://github.com/himiyosh/tonarin/releases/download/v0.2.0/Tonarin-0.2.0-mac-arm64.dmg"
+        },
+        {
+          "name": "SHA256SUMS.txt",
+          "size": 420,
+          "digest": "sha256:273f04dd76c62619750a8719627e55c6ac3013e83f78219bbfafba439257b4ca",
+          "browser_download_url": "https://github.com/himiyosh/tonarin/releases/download/v0.2.0/SHA256SUMS.txt"
+        },
+        {
+          "name": "Tonarin-0.2.0-mac-arm64.dmg.blockmap",
+          "size": 150000,
+          "browser_download_url": "https://github.com/himiyosh/tonarin/releases/download/v0.2.0/Tonarin-0.2.0-mac-arm64.dmg.blockmap"
+        }
+      ]
+    },
+    {
+      "tag_name": "v0.2.0-beta.1",
+      "name": "v0.2.0-beta.1",
+      "draft": false,
+      "prerelease": true,
+      "published_at": "2026-09-29T09:00:00Z",
+      "html_url": "https://github.com/himiyosh/tonarin/releases/tag/v0.2.0-beta.1",
+      "body_html": "<h2>v0.2.0-beta.1 Highlights</h2><p>A test build of the Windows preview (synthetic example).</p><ul><li>First Windows installer.</li></ul>",
+      "assets": [
+        {
+          "name": "Tonarin-0.2.0-beta.1-win-x64-setup.exe",
+          "size": 120586240,
+          "browser_download_url": "https://github.com/himiyosh/tonarin/releases/download/v0.2.0-beta.1/Tonarin-0.2.0-beta.1-win-x64-setup.exe"
+        }
+      ]
+    }
+  ]
+}

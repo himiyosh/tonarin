@@ -1,0 +1,15 @@
+name: Feature request
+description: Suggest an idea for Tonarin
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like Tonarin to do?
+      description: The situation you are in and what would help.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have considered

@@ -1,0 +1,31 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Please do not paste API keys, tokens or conversation transcripts. Logs in `logs/main.log` and `logs/proxy.log` (in `~/Library/Application Support/Tonarin/` on a Mac, `%APPDATA%\Tonarin\` on Windows) contain app events only and are fine to share.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. ...\n2. ...\n3. ..."
+  - type: input
+    id: version
+    attributes:
+      label: Tonarin version and OS version
+      placeholder: Tonarin 0.2.0, macOS 26.7 (or Windows 11 24H2, x64)
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      render: text

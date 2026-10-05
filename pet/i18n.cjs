@@ -2,43 +2,45 @@
 const MESSAGES = {
   ja: {
     wake: "起こす",
-    sleep: "おやすみ (マイクと接続を切る)",
+    sleep: "おやすみ（マイクと接続を切る）",
     mute: "マイクをミュート",
-    unmute: "マイクをオンにする",
+    unmute: "マイクのミュートを解除",
     character: "キャラクター",
     codexPets: "Codex / ChatGPT のペット",
-    none: "(まだありません)",
+    none: "（まだありません）",
     findPets: "codex-pets.net でペットを探す…",
-    addPet: "ダウンロードしたペットを追加…",
+    addPet: "ペットを追加…",
     openPetsFolder: "ペットのフォルダを開く",
-    size: "サイズ",
+    size: "大きさ",
     sizeSlider: "スライダーで調整…",
     sizeSmall: "小",
-    sizeMedium: "中 (標準)",
+    sizeMedium: "中（標準）",
     sizeLarge: "大",
     sizeXL: "特大",
-    pinchHint: "ペットの上でピンチ (または Control + スクロール) でも調整できます",
+    pinchHint: "ペットの上でピンチ（または Control + スクロール）しても調整できます",
     reset: "会話をリセット",
     reminderTitle: "リマインダー",
     automationTitle: "自動実行",
     automationFailed: "自動実行に失敗しました",
-    githubSignInEnded: "GitHub のサインインが切れました",
-    githubSignInEndedBody: "設定の「アプリ連携」から GitHub にサインインし直してください。",
+    mailMockNotificationTitle: "模擬メール（MOCK/DEMO）",
+    mailMockNotificationBody: "模擬の差出人: {sender} ・件名: {subject}。実際のメールではありません。",
+    githubSignInEnded: "GitHub のサインインが終了しました",
+    githubSignInEndedBody: "「設定」→「アプリ連携」で GitHub にサインインし直してください。",
     settings: "設定…",
     quit: "終了",
     showPet: "ペットを表示",
-    hidePet: "ペットを隠す",
+    hidePet: "ペットを非表示",
     addPetTitle: "ペットを追加",
-    addPetMessage: "codex-pets.net からダウンロードした zip (またはスプライトシートの画像) を選んでください",
+    addPetMessage: "codex-pets.net からダウンロードした ZIP ファイル、またはスプライトシート画像を選んでください。",
     addPetFilter: "Codex / ChatGPT のペット",
     petAdded: "「{name}」を追加しました 🎉",
-    petAddFailed: "追加できませんでした ({message})",
-    errNotFile: "ファイルではありません",
+    petAddFailed: "ペットを追加できませんでした（{message}）。",
+    errNotFile: "ファイルを選んでください。",
     errTooLarge: "ファイルが大きすぎます",
-    errZipTooLarge: "zip の中身が大きすぎるか、読み取れません",
-    errNoPet: "zip の中に pet.json もスプライトシートも見つかりません",
-    errNoSheet: "スプライトシート (spritesheet.webp / png) が見つかりません",
-    errWrongType: "zip か、スプライトシートの画像 (webp / png) を選んでください",
+    errZipTooLarge: "ZIP ファイルが大きすぎるか、読み取れません。",
+    errNoPet: "ZIP ファイル内に pet.json またはスプライトシートが見つかりません。",
+    errNoSheet: "スプライトシート（spritesheet.webp または spritesheet.png）が見つかりません。",
+    errWrongType: "ZIP ファイル、またはスプライトシート画像（WebP／PNG）を選んでください。",
     errSheetTooLarge: "スプライトシートが大きすぎます",
     settingsTitle: "設定",
   },
@@ -64,6 +66,8 @@ const MESSAGES = {
     reminderTitle: "Reminder",
     automationTitle: "Automation",
     automationFailed: "An automation failed",
+    mailMockNotificationTitle: "MOCK/DEMO mail",
+    mailMockNotificationBody: "Fictional sender: {sender} · subject: {subject}. No real mail was received.",
     githubSignInEnded: "Your GitHub sign-in has ended",
     githubSignInEndedBody: "Sign in to GitHub again in Settings > Connected apps.",
     settings: "Settings…",
@@ -91,8 +95,14 @@ function resolveLanguage(setting, locale) {
   return String(locale || "").toLowerCase().startsWith("ja") ? "ja" : "en";
 }
 
-function translator(language) {
-  const table = MESSAGES[language] ?? MESSAGES.ja;
+/** Wording that differs on Windows (the keyboard says Ctrl). Keys not listed use MESSAGES. */
+const WINDOWS = {
+  ja: { pinchHint: "ペットの上でピンチ（または Ctrl + スクロール）しても調整できます" },
+  en: { pinchHint: "You can also pinch on the pet (or Ctrl + scroll)" },
+};
+
+function translator(language, platform = process.platform) {
+  const table = { ...(MESSAGES[language] ?? MESSAGES.ja), ...(platform === "win32" ? WINDOWS[language] ?? WINDOWS.ja : {}) };
   return (key, vars = {}) =>
     (table[key] ?? MESSAGES.ja[key] ?? key).replace(/\{(\w+)\}/g, (_, name) => (name in vars ? String(vars[name]) : `{${name}}`));
 }

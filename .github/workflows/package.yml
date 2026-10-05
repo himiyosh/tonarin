@@ -1,0 +1,96 @@
+name: Package
+
+# Builds the installable apps and starts each one once (npm run smoke), on the systems they are for: npm installs the
+# Copilot runtime and koffi only for the platform it runs on, so every app is built on its own OS and architecture.
+# Runs when the app changes, and for every release (release.yml calls it with the tag).
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "pet/**"
+      - "src/**"
+      - "scripts/**"
+      - "assets/**"
+      - "build/**"
+      - "electron-builder.config.cjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/package.yml"
+  push:
+    branches: [main, develop]
+    paths:
+      - "pet/**"
+      - "src/**"
+      - "scripts/**"
+      - "assets/**"
+      - "build/**"
+      - "electron-builder.config.cjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/package.yml"
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: The tag to build
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-${{ inputs.ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  package:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (Apple Silicon)
+            runner: macos-latest
+            arch: arm64
+            files: mac-arm64
+          - name: Windows (x64)
+            runner: windows-latest
+            arch: x64
+            files: win-x64
+          - name: Windows (ARM64)
+            runner: windows-11-arm
+            arch: arm64
+            files: win-arm64
+    env:
+      # macOS builds are ad hoc signed (electron-builder.config.cjs); there is no Windows certificate yet.
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || '' }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+          cache: npm
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Unit tests
+        run: npm test
+      - name: Build the app
+        run: npm run dist -- --arch ${{ matrix.arch }}
+      - name: Start the packaged app once
+        run: npm run smoke
+      - name: Keep the files
+        uses: actions/upload-artifact@v7
+        with:
+          name: tonarin-${{ matrix.files }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*-setup.exe
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: ${{ inputs.ref && 30 || 7 }}

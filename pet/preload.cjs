@@ -2,6 +2,8 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("pet", {
+  platform: process.platform, // "darwin" or "win32": some wording and styling differ
+
   // pet window
   config: () => ipcRenderer.invoke("pet:config"),
   codexPets: () => ipcRenderer.invoke("pet:codex-pets"),
@@ -27,6 +29,24 @@ contextBridge.exposeInMainWorld("pet", {
     onChanged: (callback) => ipcRenderer.on("settings:changed", (_event, snapshot) => callback(snapshot)),
     onSection: (callback) => ipcRenderer.on("settings:section", (_event, section) => callback(section)),
     usage: () => ipcRenderer.invoke("settings:usage"),
+    news: {
+      add: (input) => ipcRenderer.invoke("settings:add-news-feed", input),
+      remove: (id) => ipcRenderer.invoke("settings:remove-news-feed", id),
+      sync: () => ipcRenderer.invoke("settings:sync-news-feeds"),
+    },
+    mailMock: {
+      setEnabled: (enabled) => ipcRenderer.invoke("settings:mail-mock", { action: "enable", enabled }),
+      selectProvider: (provider) => ipcRenderer.invoke("settings:mail-mock", { action: "provider", provider }),
+      begin: () => ipcRenderer.invoke("settings:mail-mock", { action: "begin" }),
+      approve: () => ipcRenderer.invoke("settings:mail-mock", { action: "approve" }),
+      cancel: () => ipcRenderer.invoke("settings:mail-mock", { action: "cancel" }),
+      disconnect: () => ipcRenderer.invoke("settings:mail-mock", { action: "disconnect" }),
+      next: () => ipcRenderer.invoke("settings:mail-mock", { action: "next" }),
+      setBodyOptIn: (enabled) => ipcRenderer.invoke("settings:mail-mock", { action: "body-opt-in", enabled }),
+      setReadAloud: (enabled) => ipcRenderer.invoke("settings:mail-mock", { action: "read-aloud", enabled }),
+      viewBody: (id) => ipcRenderer.invoke("settings:mail-mock", { action: "body", id }),
+      confirmAiTransfer: (id, confirmed) => ipcRenderer.invoke("settings:mail-mock", { action: "ai-confirmation", id, confirmed }),
+    },
     github: {
       signIn: (input) => ipcRenderer.invoke("settings:github-signin", input),
       cancel: () => ipcRenderer.invoke("settings:github-cancel"),

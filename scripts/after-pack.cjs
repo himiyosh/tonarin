@@ -35,7 +35,8 @@ function addLiquidGlassIcon(appBundle) {
 }
 
 exports.default = async function afterPack(context) {
+  if (context.electronPlatformName !== "darwin") return; // Windows: no permission bits to fix and no Info.plist
   const appBundle = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
   normalize(path.join(appBundle, "Contents", "Resources", "app"));
-  if (context.electronPlatformName === "darwin") addLiquidGlassIcon(appBundle);
+  addLiquidGlassIcon(appBundle);
 };

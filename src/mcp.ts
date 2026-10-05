@@ -13,6 +13,7 @@
  */
 import { EventEmitter } from "node:events";
 import { homedir } from "node:os";
+import { delimiter, join } from "node:path";
 import { Client, StreamableHTTPClientTransport, type Tool } from "@modelcontextprotocol/client";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/client/stdio";
 import type { GeminiSchema, LiveTool } from "./live.js";
@@ -305,7 +306,7 @@ export class McpManager extends EventEmitter<{ change: [toolsChanged: boolean] }
           args: (config.args ?? []).map(expandHome),
           env: {
             ...getDefaultEnvironment(),
-            PATH: [process.env.PATH, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"].filter(Boolean).join(":"),
+            PATH: searchPath(),
             ...(config.env ?? {}),
           },
           stderr: "pipe",
@@ -379,8 +380,20 @@ export function liveToolName(serverId: string, toolName: string): string {
   return `mcp_${serverId.replace(/[^A-Za-z0-9]/g, "").slice(0, 8)}_${clean}`.slice(0, 64);
 }
 
+/**
+ * PATH for stdio servers. An app started from the Dock or Finder gets a short PATH on macOS, so Homebrew's folders are
+ * added there. Windows keeps its own PATH (entries are separated by ";", and npx and friends are found through it).
+ */
+function searchPath(): string {
+  if (process.platform === "win32") return process.env.PATH ?? "";
+  return [process.env.PATH, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"].filter(Boolean).join(delimiter);
+}
+
+/** "~/bin/server" (or "~\bin\server.exe" on Windows) starts in the home folder. */
 function expandHome(value: string): string {
-  return value === "~" || value.startsWith("~/") ? homedir() + value.slice(1) : value;
+  if (value === "~") return homedir();
+  const slash = value.startsWith("~/") || (process.platform === "win32" && value.startsWith("~\\"));
+  return slash ? join(homedir(), value.slice(2)) : value;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {

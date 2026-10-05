@@ -1,19 +1,44 @@
 /**
  * App settings, stored in the app's own folder (userData/settings.json), and secrets (the Gemini API key)
- * encrypted with Electron safeStorage (backed by the macOS keychain). Nothing here is read from .env,
- * except as a fallback the caller decides on (development setups keep working).
+ * encrypted with Electron safeStorage (backed by the macOS keychain, or DPAPI for the Windows account). Nothing here
+ * is read from .env, except as a fallback the caller decides on (development setups keep working).
  */
-const { safeStorage } = require("electron");
 const { EventEmitter } = require("node:events");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const catalog = require("../src/catalog.json");
+// Plain settings can be loaded by Node tests without downloading Electron; only secret operations need its native API.
+const electronStorage = () => require("electron").safeStorage;
 
 const LANGUAGES = ["auto", "ja", "en"];
 const FEED_IDS = new Set(catalog.feeds.map((feed) => feed.id));
+const prohibitedFeedHost = (hostname) => catalog.prohibitedFeedHosts.some((host) => hostname === host || hostname.endsWith(`.${host}`));
+const NEWS_CATEGORIES = new Set(["technology", "general", "business", "science", "lifestyle"]);
 const VOICE_IDS = new Set(catalog.voices.map((voice) => voice.id));
 const isBool = (value) => typeof value === "boolean";
+
+function isCustomFeed(feed) {
+  if (!feed || typeof feed !== "object" || Array.isArray(feed)) return false;
+  if (Object.keys(feed).some((key) => !["id", "name", "language", "category", "url", "siteUrl", "siteHost"].includes(key))) return false;
+  if (!/^custom-[0-9a-f-]{36}$/.test(feed.id) || typeof feed.name !== "string" || !feed.name || feed.name.length > 100) return false;
+  if (typeof feed.url !== "string" || typeof feed.siteUrl !== "string" || typeof feed.siteHost !== "string") return false;
+  if (!["ja", "en"].includes(feed.language) || !NEWS_CATEGORIES.has(feed.category)) return false;
+  try {
+    const site = new URL(feed.siteUrl);
+    const source = new URL(feed.url);
+    return (
+      feed.siteUrl.length <= 2048 && feed.url.length <= 2048 &&
+      site.protocol === "https:" && source.protocol === "https:" &&
+      !site.username && !site.password && !source.username && !source.password &&
+      !site.hostname.endsWith(".") && !source.hostname.endsWith(".") &&
+      !prohibitedFeedHost(site.hostname) && !prohibitedFeedHost(source.hostname) &&
+      feed.siteHost === site.hostname && !FEED_IDS.has(feed.id)
+    );
+  } catch {
+    return false;
+  }
+}
 
 const DEFAULTS = {
   language: "auto", // menus and bubbles
@@ -32,6 +57,9 @@ const DEFAULTS = {
   mode: "companion", // companion | english (conversation practice) | focus (quiet, short answers)
   mcpServers: [], // MCP connections without their secrets (those are in the keychain as "mcp:<id>")
   feeds: null, // null = the default set for the speech language
+  customFeeds: [], // verified RSS/Atom feeds and the exact site hostname the user entered
+  mailMockEnabled: false, // local demo only; never a real mailbox connection
+  mailMockProvider: "gmail",
   launchAtLogin: false,
   migratedLocalPrefs: false,
   proxyKey: "",
@@ -53,7 +81,14 @@ const VALID = {
   useCopilot: isBool,
   mode: (v) => ["companion", "english", "focus"].includes(v),
   mcpServers: (v) => Array.isArray(v) && v.length <= 20 && v.every(isMcpServer),
-  feeds: (v) => v === null || (Array.isArray(v) && v.length <= 30 && v.every((id) => FEED_IDS.has(id))),
+  feeds: (v, values) => v === null || (
+    Array.isArray(v) && v.length <= 30 && new Set(v).size === v.length &&
+    v.every((id) => typeof id === "string" && (FEED_IDS.has(id) || values.customFeeds.some((feed) => feed.id === id)))
+  ),
+  customFeeds: (v) => Array.isArray(v) && v.length <= 10 && v.every(isCustomFeed) &&
+    new Set(v.map((feed) => feed.id)).size === v.length && new Set(v.map((feed) => feed.url)).size === v.length,
+  mailMockEnabled: isBool,
+  mailMockProvider: (v) => v === "gmail" || v === "outlook",
   launchAtLogin: isBool,
   migratedLocalPrefs: isBool,
   proxyKey: (v) => typeof v === "string" && v.length <= 200,
@@ -61,7 +96,8 @@ const VALID = {
 
 const SECRET_NAMES = new Set(["geminiApiKey"]);
 // "mcp:<id>" = env values and headers of an MCP connection; "github:<id>" = its GitHub refresh token and expiry times.
-const isSecretName = (name) => SECRET_NAMES.has(name) || /^(mcp|github):[A-Za-z0-9-]{1,40}$/.test(name);
+const isSecretName = (name) => SECRET_NAMES.has(name) || /^(mcp|github):[A-Za-z0-9-]{1,40}$/.test(name) ||
+  /^mailMock:(gmail|outlook)$/.test(name);
 
 function isMcpServer(s) {
   const str = (v, max) => typeof v === "string" && v.length <= max;
@@ -97,8 +133,14 @@ class Settings extends EventEmitter {
 
   load() {
     const saved = readJson(this.file);
+    if ("customFeeds" in saved) {
+      if (VALID.customFeeds(saved.customFeeds)) this.values.customFeeds = saved.customFeeds;
+      else console.error("[settings] ignored invalid saved news sites");
+    }
     for (const key of Object.keys(DEFAULTS)) {
-      if (key in saved && VALID[key](saved[key])) this.values[key] = saved[key];
+      if (key === "customFeeds") continue;
+      if (key in saved && VALID[key](saved[key], this.values)) this.values[key] = saved[key];
+      else if (key === "feeds" && key in saved) console.error("[settings] ignored invalid saved news selection");
     }
     const secrets = readJson(this.secretsFile);
     for (const [name, value] of Object.entries(secrets)) if (isSecretName(name) && typeof value === "string") this.secrets[name] = value;
@@ -106,7 +148,7 @@ class Settings extends EventEmitter {
 
   /** Whether `value` would be accepted for `key` (lets callers check before they change anything else). */
   isValid(key, value) {
-    return key in DEFAULTS && VALID[key](value);
+    return key in DEFAULTS && VALID[key](value, this.values);
   }
 
   get all() {
@@ -117,7 +159,7 @@ class Settings extends EventEmitter {
   update(patch) {
     const changed = [];
     for (const [key, value] of Object.entries(patch ?? {})) {
-      if (!(key in DEFAULTS) || !VALID[key](value)) continue;
+      if (!(key in DEFAULTS) || !VALID[key](value, this.values)) continue;
       if (JSON.stringify(this.values[key]) === JSON.stringify(value)) continue;
       this.values[key] = structuredClone(value);
       changed.push(key);
@@ -141,7 +183,10 @@ class Settings extends EventEmitter {
   }
 
   getSecret(name) {
-    if (!this.secrets[name] || !safeStorage.isEncryptionAvailable()) return undefined;
+    if (!this.secrets[name]) return undefined;
+    const safeStorage = electronStorage();
+    if (!safeStorage.isEncryptionAvailable() ||
+        (name.startsWith("mailMock:") && safeStorage.getSelectedStorageBackend?.() === "basic_text")) return undefined;
     try {
       return safeStorage.decryptString(Buffer.from(this.secrets[name], "base64"));
     } catch {
@@ -151,13 +196,19 @@ class Settings extends EventEmitter {
 
   setSecret(name, value) {
     if (!isSecretName(name)) throw new Error(`Unknown secret: ${name}`);
+    const next = { ...this.secrets };
     if (value) {
-      if (!safeStorage.isEncryptionAvailable()) throw new Error("Secure storage (keychain) is not available");
-      this.secrets[name] = safeStorage.encryptString(value).toString("base64");
+      const safeStorage = electronStorage();
+      if (!safeStorage.isEncryptionAvailable() ||
+          (name.startsWith("mailMock:") && safeStorage.getSelectedStorageBackend?.() === "basic_text")) {
+        throw new Error("Secure storage is not available");
+      }
+      next[name] = safeStorage.encryptString(value).toString("base64");
     } else {
-      delete this.secrets[name];
+      delete next[name];
     }
-    writeJson(this.secretsFile, this.secrets);
+    writeJson(this.secretsFile, next);
+    this.secrets = next;
     this.emit("change", [`secret:${name}`]);
   }
 }
@@ -174,7 +225,16 @@ function readJson(file) {
 function writeJson(file, data) {
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
-  fs.renameSync(tmp, file);
+  // On Windows a virus scanner or the search indexer can hold the file for a moment: try again briefly.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      fs.renameSync(tmp, file);
+      return;
+    } catch (error) {
+      if (process.platform !== "win32" || attempt >= 5 || !["EPERM", "EACCES", "EBUSY"].includes(error?.code)) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40 * attempt);
+    }
+  }
 }
 
 module.exports = { Settings, DEFAULTS, catalog };

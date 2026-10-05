@@ -374,11 +374,11 @@ export function describeTrigger(trigger: Trigger, language: "ja" | "en"): string
       return ja ? `${days(trigger.days)} ${trigger.time}` : `${days(trigger.days)} at ${trigger.time}`;
     case "interval":
       return ja
-        ? `${days(trigger.days)} ${trigger.from}〜${trigger.to} に ${trigger.everyMinutes} 分ごと`
+        ? `${days(trigger.days)} ${trigger.from}〜${trigger.to} の間、${trigger.everyMinutes} 分ごと`
         : `${days(trigger.days)}, every ${trigger.everyMinutes} min from ${trigger.from} to ${trigger.to}`;
     case "keyword":
       return ja
-        ? `「${trigger.keywords.join("」「")}」の記事が出たら (${trigger.everyMinutes} 分ごとに確認)`
+        ? `「${trigger.keywords.join("」「")}」を含む新着記事が出たら（${trigger.everyMinutes} 分ごとに確認）`
         : `when an article mentions ${trigger.keywords.map((k) => `"${k}"`).join(", ")} (checked every ${trigger.everyMinutes} min)`;
   }
 }
