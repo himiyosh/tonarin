@@ -195,7 +195,9 @@ test("usage guidance stays read-only and News settings explain the enabled scope
     onChanged(snapshot(language, undefined, { speechLanguage: "en", customFeeds: [japaneseSite, englishSite], feeds: null }));
     assert.equal(newsPage().querySelector(".news-scope").textContent, t("news.watching", { builtIn: catalog.defaultFeeds.en.length, custom: 1 }));
     assert.deepEqual(customSwitches(), [false, true], "changing the pet's language updates the watched sources");
+    assert.equal(newsPage().querySelector(".news-empty").hidden, true, "defaults hide the empty state");
     onChanged(snapshot(language));
+    assert.equal(newsPage().querySelector(".news-empty").hidden, false, "turning off all sources shows the empty state");
   }
 
   onChanged(snapshot("en", undefined, { speechLanguage: "en", customFeeds: [japaneseSite, englishSite],
