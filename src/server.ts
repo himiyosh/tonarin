@@ -37,6 +37,7 @@ import { formatLocal, ReminderStore, resolveDueTime, type Reminder } from "./rem
 import { forwardTranscription, startWhisper, stopWhisper, whisperRunning } from "./stt.js";
 import { estimateUsd, PAID_PRICES, UsageStore } from "./usage.js";
 import { listJapaneseVoices, synthesize, TTS_MODEL_ID, ttsAvailable } from "./tts.js";
+import { writeShutdownMarker } from "./proxy-stop.js";
 
 // ---------------------------------------------------------------------------
 // Configuration (environment variables)
@@ -1291,7 +1292,7 @@ async function shutdown(): Promise<void> {
     if (result.status === "rejected") console.error("[copilot] could not disconnect a news research session:", result.reason);
   }
   await client.stop().catch(() => {});
-  console.log("[proxy] stopped");
+  writeShutdownMarker(process.env.TONARIN_PROXY_LOG_FILE);
   process.exit(0);
 }
 process.on("SIGINT", shutdown);

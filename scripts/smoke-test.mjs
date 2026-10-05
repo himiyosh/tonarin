@@ -13,6 +13,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
+import { smokeFailures } from "./smoke-result.mjs";
 
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const name = pkg.productName;
@@ -60,22 +61,16 @@ const exit = await new Promise((done) => {
   });
 });
 
-const failures = [];
 let report;
+let reportError;
 try {
   report = JSON.parse(read(reportFile));
-} catch {
-  failures.push("the app wrote no report");
+} catch (error) {
+  reportError = error;
 }
-if (report?.problems?.length) failures.push(...report.problems);
-if (report && report.version !== pkg.version) failures.push(`the app reports version ${report.version}, package.json says ${pkg.version}`);
-if (exit !== 0) failures.push(`the app exited with ${exit}`);
 const proxyLog = read(join(userData, "logs", "proxy.log"));
 const mainLog = read(join(userData, "logs", "main.log"));
-const count = (text, pattern) => (text.match(pattern) ?? []).length;
-if (!count(proxyLog, /\[proxy\] stopped/g) || count(proxyLog, /\[proxy\] stopped/g) !== count(proxyLog, /listening on/g)) {
-  failures.push("the proxy did not shut down gracefully");
-}
+const failures = smokeFailures({ report, reportError, version: pkg.version, exit, proxyLog });
 
 const seconds = ((Date.now() - started) / 1000).toFixed(1);
 if (report) {

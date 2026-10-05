@@ -244,6 +244,7 @@ Environment variables for development and for the standalone proxy are listed in
 | `npm run hooks` | Enable the repo's Git hooks (blocks direct pushes to `main`) |
 
 Packaged smoke accepts a signed-out Copilot runtime, but requires an actual sign-in status response. If the first check stalls, the proxy retries once only after the runtime answers a separate status probe; a runtime that stays unavailable still fails.
+The bundled proxy writes its graceful-stop marker directly to `proxy.log` before exiting, so a buffered output pipe cannot lose it. Missing markers, abnormal or timed-out proxy exits, and app self-check errors still fail.
 
 ```text
 tonarin/
