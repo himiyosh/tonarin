@@ -41,6 +41,7 @@ const { createPets } = require("./pets.cjs");
 const { createDeviceFlow, isTransient } = require("./github.cjs");
 const { layoutFor } = require("./layout.cjs");
 const { createMailMock, MailMockError } = require("./mail-mock.cjs");
+const { stopProxy } = require("./proxy-process.cjs");
 const { Settings, catalog } = require("./settings.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -200,6 +201,7 @@ async function waitForPort(port, timeoutMs) {
 let proxyChild; // { stop(): Promise<void> } while the app runs the proxy
 let proxyRunning = false;
 let proxyStatus = null; // what the proxy reports on /v1/status: { live, copilot }
+let smokeProxyFailure = false;
 
 /** A free TCP port on 127.0.0.1 (the OS picks one; the proxy binds it a moment later). */
 function freePort() {
@@ -227,6 +229,8 @@ function startProxy() {
     AUTOMATIONS_FILE: path.join(app.getPath("userData"), "automations.json"),
     USAGE_FILE: path.join(app.getPath("userData"), "usage.json"), // token counts per day, no content
   };
+  if (BUNDLED_PROXY) childEnv.TONARIN_PROXY_LOG_FILE = logFile;
+  else delete childEnv.TONARIN_PROXY_LOG_FILE;
   if (env("DEBUG_REQUESTS")) childEnv.DEBUG_REQUESTS = env("DEBUG_REQUESTS"); // the bundled proxy does not read .env
   // The settings window (keychain) wins over .env. The bundled proxy does not read .env itself, so pass it on.
   const key = settings.getSecret("geminiApiKey") || ENV_GEMINI_KEY;
@@ -235,6 +239,7 @@ function startProxy() {
   let exited;
   const onExit = (code) => {
     console.log(`[pet] proxy exited (code ${code}); see ${logFile}`);
+    if (code !== 0) smokeProxyFailure = true;
     if (proxyChild === handle) {
       proxyChild = undefined;
       proxyRunning = false;
@@ -245,15 +250,7 @@ function startProxy() {
   let handle;
   // Stopping lets the proxy shut down gracefully, so the Copilot runtime and MCP servers it started stop too: a signal
   // on macOS, a message on Windows (it has no signals a process can catch). If that fails, the process is ended.
-  const stopWith = (graceful, kill) => () => {
-    try {
-      graceful();
-    } catch {
-      kill(); // already gone, or the channel closed
-    }
-    const force = setTimeout(kill, 8000); // the proxy gives up on a graceful stop after 5 s by itself
-    return exited.finally(() => clearTimeout(force));
-  };
+  const stopWith = (graceful, kill) => () => stopProxy(graceful, kill, exited);
   if (BUNDLED_PROXY) {
     const child = utilityProcess.fork(path.join(ROOT, "dist", "server.mjs"), [], {
       serviceName: `${APP_NAME} proxy`,
@@ -261,9 +258,14 @@ function startProxy() {
       env: childEnv,
       stdio: "pipe",
     });
+    if (!child.stdout || !child.stderr) throw new Error("the bundled proxy has no output pipes");
     const log = fs.createWriteStream(logFile, { flags: "a" });
-    child.stdout?.pipe(log);
-    child.stderr?.pipe(log);
+    log.on("error", (error) => {
+      console.error("[pet] could not save the proxy log:", error);
+      smokeProxyFailure = true;
+    });
+    child.stdout.pipe(log);
+    child.stderr.pipe(log);
     exited = new Promise((resolve) => child.once("exit", resolve));
     handle = { stop: stopWith(() => (IS_WINDOWS ? child.postMessage({ type: "shutdown" }) : child.kill()), () => child.kill()) };
   } else {
@@ -274,10 +276,18 @@ function startProxy() {
       stdio: ["ignore", log, log, "ipc"], // IPC: the stop message on Windows; the proxy also stops if the app goes away
       windowsHide: true, // no console window on Windows
     });
+    fs.closeSync(log);
     exited = new Promise((resolve) => child.once("exit", resolve));
     handle = {
       stop: stopWith(
-        () => (IS_WINDOWS ? child.send({ type: "shutdown" }, (error) => error && child.kill()) : child.kill("SIGINT")),
+        (force) => (IS_WINDOWS
+          ? child.send({ type: "shutdown" }, (error) => {
+            if (error) {
+              console.error("[pet] could not ask the proxy to shut down:", error);
+              force();
+            }
+          })
+          : child.kill("SIGINT")),
         () => child.kill(),
       ),
     };
@@ -487,7 +497,7 @@ async function restartProxy() {
   const child = proxyChild;
   if (!child) return false;
   proxyStatus = null;
-  await Promise.race([child.stop(), new Promise((resolve) => setTimeout(resolve, 7000))]);
+  await child.stop();
   startProxy(); // same port: the pet keeps its address
 
   proxyRunning = await waitForPort(PORT, 20_000);
@@ -1655,8 +1665,22 @@ app.on("window-all-closed", () => {
 let stoppingProxy = false;
 app.on("will-quit", (event) => {
   // Let the proxy shut down gracefully first: it also stops the Copilot runtime it started.
-  if (!proxyChild || stoppingProxy) return;
+  if (stoppingProxy) return;
+  if (!proxyChild) {
+    if (SMOKE_TEST_FILE && smokeProxyFailure) {
+      event.preventDefault();
+      app.exit(1);
+    }
+    return;
+  }
   stoppingProxy = true;
   event.preventDefault();
-  Promise.race([proxyChild.stop(), new Promise((resolve) => setTimeout(resolve, 6000))]).finally(() => app.quit());
+  proxyChild.stop().then(
+    () => (SMOKE_TEST_FILE && smokeProxyFailure ? app.exit(1) : app.quit()),
+    (error) => {
+      console.error("[pet] proxy shutdown failed:", error);
+      if (SMOKE_TEST_FILE) app.exit(1);
+      else app.quit();
+    },
+  );
 });
