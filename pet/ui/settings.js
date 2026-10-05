@@ -5,13 +5,14 @@
  */
 import { CHARACTERS, characterName } from "./characters.js";
 import { applyI18n, getLanguage, PLATFORM, setLanguage, t } from "./i18n.js";
+import { speakLocalMockMetadata } from "./mail-mock-speech.js";
 import { loadSprite } from "./sprite.js";
 
 const api = window.pet.settings;
 const nav = document.getElementById("nav");
 const content = document.getElementById("content");
 
-const SECTIONS = ["general", "character", "voice", "automations", "mcp", "news", "connection", "usage", "about"];
+const SECTIONS = ["general", "character", "voice", "automations", "mcp", "news", "mailMock", "connection", "usage", "about"];
 const ICONS = {
   general: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M4.2 7.5l2.1 1.2M17.7 15.3l2.1 1.2M4.2 16.5l2.1-1.2M17.7 8.7l2.1-1.2"/><circle cx="12" cy="12" r="7.2"/></svg>',
   character: '<svg viewBox="0 0 24 24"><path d="M12 5c5 0 8 3.6 8 8.2S16.6 20 12 20s-8-2.2-8-6.8S7 5 12 5z"/><path d="M12 5c0-1.6.8-2.6 2.2-3"/><circle cx="9.3" cy="12.5" r=".9"/><circle cx="14.7" cy="12.5" r=".9"/></svg>',
@@ -19,19 +20,36 @@ const ICONS = {
   automations: '<svg viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.6 2.2M9.5 2.8h5M19 5.5l1.5 1.5"/></svg>',
   mcp: '<svg viewBox="0 0 24 24"><path d="M9 2.8v4.4M15 2.8v4.4M6.5 7.2h11v3.3a5.5 5.5 0 0 1-11 0z"/><path d="M12 16v5.2"/></svg>',
   news: '<svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="14" height="15" rx="2"/><path d="M17.5 8.5h2a1 1 0 0 1 1 1v8a2 2 0 0 1-2 2M7 9h7M7 12.5h7M7 16h4"/></svg>',
+  mailMock: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6M8 16h8"/></svg>',
   connection: '<svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l8-8M16 7l2 2M14 9l2 2"/></svg>',
   usage: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M14.6 9.3c-.5-.9-1.5-1.4-2.6-1.4-1.5 0-2.6.8-2.6 1.9 0 1.2 1.1 1.7 2.6 2s2.6.8 2.6 2-1.1 2-2.6 2c-1.2 0-2.2-.6-2.7-1.5M12 6.1v1.8M12 16.1v1.8"/></svg>',
   about: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.6v.2"/></svg>',
+};
+const BILLING_ICONS = {
+  talk: ICONS.voice,
+  listening: '<svg viewBox="0 0 24 24"><path d="M4 15V9M8 18V6M12 20V4M16 17V7M20 15V9"/></svg>',
+  mute: '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M4 4l16 16"/></svg>',
+  sleep: '<svg viewBox="0 0 24 24"><path d="M19.5 15.7A8.5 8.5 0 0 1 8.3 4.5 8.5 8.5 0 1 0 19.5 15.7z"/></svg>',
+  scheduled: ICONS.automations,
+  quit: '<svg viewBox="0 0 24 24"><path d="M12 2.5v9M6 6.7a8 8 0 1 0 12 0"/></svg>',
+  copilot: '<svg viewBox="0 0 24 24"><path d="m12 2 2.6 7.4L22 12l-7.4 2.6L12 22l-2.6-7.4L2 12l7.4-2.6z"/></svg>',
+  data: ICONS.news,
 };
 const OSS = ["Electron", "ws", "@github/copilot-sdk", "@modelcontextprotocol/client", "@mozilla/readability", "linkedom", "robots-parser", "rss-parser", "zod", "tsx", "TypeScript"];
 
 let snap;
 let current = SECTIONS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "general";
 let syncers = []; // functions that refresh controls from the latest snapshot without rebuilding them
+let cancelMailMockSpeech = () => {};
 let codexPets = [];
 const svgCache = new Map();
 const NEWS_CATEGORIES = ["general", "business", "science", "lifestyle", "technology"];
+const MAX_CUSTOM_FEEDS = 10;
 const NEWS_ERRORS = new Set(["url", "address", "dns", "network", "timeout", "http", "size", "redirect", "encoding", "feed", "config", "rights", "duplicate", "limit", "selection"]);
+const MAIL_MOCK_ERRORS = new Set(["invalid", "off", "already-connected", "pending", "no-pending", "expired",
+  "state-mismatch", "pkce-mismatch", "code-invalid", "storage", "storage-unavailable", "token-expired",
+  "invalid-response", "not-connected", "exhausted", "body-opt-in", "invalid-message", "body-not-viewed",
+  "ai-confirmation", "unauthorized", "internal"]);
 const NEWS_CREDIT_LINKS = {
   "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/": "news-ogl",
   "https://www.nsf.gov/policies/digital": "news-nsf",
@@ -398,12 +416,14 @@ function sectionNews() {
         onclick: async (event) => {
           if (!window.confirm(t("news.removeConfirm", { name: feed.name }))) return;
           const button = event.currentTarget;
+          const restoreFocus = document.activeElement === button;
           button.disabled = true;
           try {
             const result = await api.news.remove(feed.id);
             if (result.ok) newsFeedback = { key: "news.removed", type: "ok", vars: { name: feed.name } };
             if (result.snapshot) onSnapshot(result.snapshot);
             if (!result.ok) newsSay(result.saved ? "news.applyFailed" : "news.changeFailed", "error");
+            else if (restoreFocus && current === "news") document.getElementById("news-custom-heading")?.focus({ preventScroll: true });
           } catch {
             newsSay("news.changeFailed", "error");
           } finally {
@@ -448,6 +468,14 @@ function sectionNews() {
       }),
     ];
   };
+  const scopeNote = el("div", { class: "notice info news-scope" });
+  sync(() => {
+    const chosen = new Set(enabled());
+    scopeNote.textContent = t("news.watching", {
+      builtIn: snap.catalog.feeds.filter((feed) => chosen.has(feed.id)).length,
+      custom: snap.values.customFeeds.filter((feed) => chosen.has(feed.id)).length,
+    });
+  });
   const defaultsNote = el("div", { class: "notice info", text: t("news.usingDefaults") });
   sync(() => (defaultsNote.hidden = snap.values.feeds !== null));
   const empty = el("div", { class: "notice warn news-empty", text: t("news.empty") });
@@ -482,6 +510,11 @@ function sectionNews() {
   sync(() => {
     if (newsFeedback) newsSay(newsFeedback.key, newsFeedback.type, newsFeedback.vars);
   });
+  const capacityNote = el("p", { class: "lead small news-capacity" });
+  sync(() => {
+    const count = snap.values.customFeeds.length;
+    capacityNote.textContent = t("news.capacity", { count, max: MAX_CUSTOM_FEEDS, remaining: MAX_CUSTOM_FEEDS - count });
+  });
   const url = el("input", {
     type: "url", class: "news-url", maxlength: "2048", required: true, spellcheck: false, autocomplete: "url",
     placeholder: t("news.sitePlaceholder"), "aria-label": t("news.siteUrl"),
@@ -491,20 +524,33 @@ function sectionNews() {
   language.value = snap.speechLanguage;
   const category = el("select", { "aria-label": t("news.siteCategory") },
     NEWS_CATEGORIES.map((id) => el("option", { value: id, text: t(`news.category.${id}`) })));
+  let adding = false;
   const addButton = el("button", {
     class: "btn primary", type: "button", text: t("news.add"),
     onclick: async () => {
+      if (adding) return;
+      if (snap.values.customFeeds.length >= MAX_CUSTOM_FEEDS) {
+        newsSay("news.error.limit", "error");
+        return;
+      }
       if (!/^https:\/\//i.test(url.value.trim()) || !url.checkValidity()) {
         newsSay("news.error.url", "error");
         url.focus();
         return;
       }
+      const restoreFocus = document.activeElement === addButton || document.activeElement === url;
+      adding = true;
       addButton.disabled = true;
       addButton.textContent = t("news.adding");
       try {
         const result = await api.news.add({ url: url.value.trim(), language: language.value, category: category.value });
         if (result.ok) newsFeedback = { key: "news.added", type: "ok", vars: { name: result.feed.name } };
         if (result.snapshot) onSnapshot(result.snapshot);
+        if (result.ok && result.snapshot && restoreFocus && current === "news") {
+          const nextUrl = document.querySelector("#section-news .news-url");
+          nextUrl.value = "";
+          nextUrl.focus();
+        }
         if (!result.ok) {
           const key = NEWS_ERRORS.has(result.code) ? `news.error.${result.code}` : "news.addFailed";
           newsSay(result.saved ? "news.applyFailed" : key, "error", { message: result.message ?? "" });
@@ -512,24 +558,25 @@ function sectionNews() {
       } catch (error) {
         newsSay("news.addFailed", "error", { message: error instanceof Error ? error.message : String(error) });
       } finally {
-        addButton.disabled = false;
+        adding = false;
+        addButton.disabled = snap.values.customFeeds.length >= MAX_CUSTOM_FEEDS;
         addButton.textContent = t("news.add");
       }
     },
   });
+  sync(() => (addButton.disabled = adding || snap.values.customFeeds.length >= MAX_CUSTOM_FEEDS));
   const credits = [...new Map(snap.catalog.feeds.filter((feed) => feed.attribution)
     .map((feed) => [feed.attribution.url, feed.attribution])).values()];
   return [
     el("h1", { text: t("news.title") }),
     el("p", { class: "lead", text: t("news.desc") }),
+    scopeNote,
     defaultsNote,
     syncNotice,
     empty,
-    el("h2", { text: t("news.categories") }),
-    el("p", { class: "lead small", text: t("news.categoryDesc") }),
-    el("div", { class: "group" }, NEWS_CATEGORIES.map(categoryRow)),
     el("h2", { text: t("news.addTitle") }),
     el("p", { class: "lead small", text: t("news.addDesc") }),
+    capacityNote,
     el("div", { class: "group" },
       el("div", { class: "row stack" },
         el("label", { class: "title", text: t("news.siteUrl") }, url),
@@ -537,7 +584,10 @@ function sectionNews() {
         newsMessage,
       )),
     el("p", { class: "lead small news-host-note", text: t("news.hostLimit") }),
-    el("h2", { text: t("news.custom") }),
+    el("h2", { text: t("news.categories") }),
+    el("p", { class: "lead small", text: t("news.categoryDesc") }),
+    el("div", { class: "group" }, NEWS_CATEGORIES.map(categoryRow)),
+    el("h2", { id: "news-custom-heading", tabindex: "-1", text: t("news.custom") }),
     el("div", { class: "group" },
       snap.values.customFeeds.length ? snap.values.customFeeds.map(feedRow) : el("div", { class: "empty", text: t("news.customEmpty") })),
     el("h2", { text: t("news.ja") }),
@@ -554,6 +604,264 @@ function sectionNews() {
       )),
     ] : []),
     el("div", { class: "actions spaced" }, el("button", { class: "btn", type: "button", text: t("news.reset"), onclick: () => void updateSelection(null) })),
+  ];
+}
+
+function sectionMailMock() {
+  const state = () => snap.mailMock;
+  let busy = false;
+  let shownBody = null;
+  let listKey = "";
+  let speechAttempt;
+  const status = el("span", { class: "pill", role: "status", "aria-live": "polite" });
+  const statusError = el("div", { class: "notice warn", role: "alert" });
+  const account = el("div", { class: "notice info" });
+  const feedback = el("div", { class: "message", role: "status", "aria-live": "polite" });
+  const speechFeedback = el("div", { class: "message", role: "status", "aria-live": "polite" });
+  const enabled = el("input", {
+    type: "checkbox", role: "switch", "aria-label": t("mailMock.enable"),
+    onchange: () => {
+      const value = enabled.checked;
+      void run(() => api.mailMock.setEnabled(value), { clearBody: true });
+    },
+  });
+  const provider = el("select", {
+    "aria-label": t("mailMock.provider"),
+    onchange: () => {
+      const value = provider.value;
+      void run(() => api.mailMock.selectProvider(value), { clearBody: true });
+    },
+  }, ["gmail", "outlook"].map((id) => el("option", { value: id, text: t(`mailMock.provider.${id}`) })));
+  const begin = el("button", {
+    class: "btn primary", type: "button", text: t("mailMock.begin"),
+    onclick: () => void run(() => api.mailMock.begin(), { success: "mailMock.pending" }),
+  });
+  const approve = el("button", {
+    class: "btn primary", type: "button", text: t("mailMock.approve"),
+    onclick: () => void run(() => api.mailMock.approve(), { success: "mailMock.approved" }),
+  });
+  const cancel = el("button", {
+    class: "btn", type: "button", text: t("mailMock.cancel"),
+    onclick: () => void run(() => api.mailMock.cancel(), { success: "mailMock.cancelled" }),
+  });
+  const disconnect = el("button", {
+    class: "btn danger", type: "button", text: t("mailMock.disconnect"),
+    onclick: () => void run(() => api.mailMock.disconnect(), { clearBody: true, success: "mailMock.disconnected" }),
+  });
+  const next = el("button", {
+    class: "btn primary", type: "button", text: t("mailMock.next"),
+    onclick: async () => {
+      const result = await run(() => api.mailMock.next());
+      if (!result) return;
+      say(result.notification === "requested" ? "mailMock.delivered" :
+        result.notification === "unsupported" ? "mailMock.notificationUnsupported" : "mailMock.notificationFailed",
+      result.notification === "requested" ? "ok" : "error", { subject: result.message.subject });
+      if (state().readAloud) speak(result.message);
+    },
+  });
+  const remaining = el("span", { class: "mail-count" });
+  const exhausted = el("div", { class: "notice info", text: t("mailMock.exhausted") });
+  const list = el("div", { class: "group mail-list" });
+  const readAloud = el("input", {
+    type: "checkbox", role: "switch", "aria-label": t("mailMock.readAloud"),
+    onchange: () => {
+      const value = readAloud.checked;
+      void run(() => api.mailMock.setReadAloud(value));
+    },
+  });
+  const bodyOptIn = el("input", {
+    type: "checkbox", role: "switch", "aria-label": t("mailMock.bodyOptIn"),
+    onchange: () => {
+      const value = bodyOptIn.checked;
+      void run(() => api.mailMock.setBodyOptIn(value), { clearBody: true });
+    },
+  });
+  const bodyControls = el("div", { class: "group" },
+    row(t("mailMock.bodyOptIn"), t("mailMock.bodyDesc"),
+      el("label", { class: "switch" }, bodyOptIn, el("span", { class: "track" }))));
+  const spokenControls = el("div", { class: "group" },
+    row(t("mailMock.readAloud"), t("mailMock.readAloudDesc"),
+      el("label", { class: "switch" }, readAloud, el("span", { class: "track" }))));
+  const bodyText = el("p", { class: "mail-body-text" });
+  const aiCheck = el("input", { type: "checkbox", onchange: () => refresh() });
+  const aiConfirm = el("button", {
+    class: "btn", type: "button", text: t("mailMock.aiConfirm"),
+    onclick: async () => {
+      const result = await run(() => api.mailMock.confirmAiTransfer(shownBody?.id, aiCheck.checked));
+      if (result) {
+        aiCheck.checked = false;
+        say("mailMock.aiRecorded");
+        refresh();
+      }
+    },
+  });
+  const bodyPanel = el("div", { class: "group mail-body-panel" },
+    el("div", { class: "row stack" },
+      el("div", { class: "label" }, el("div", { class: "title", text: t("mailMock.bodyLabel") })),
+      bodyText,
+      el("div", { class: "mail-ai-confirm" },
+        el("p", { text: t("mailMock.aiDesc") }),
+        el("label", { class: "check" }, aiCheck, el("span", { text: t("mailMock.aiCheck") })),
+        aiConfirm)));
+
+  function say(key, kind = "ok", vars = {}) {
+    feedback.className = `message ${kind}`;
+    feedback.textContent = t(key, vars);
+  }
+
+  function stopSpeech() {
+    speechAttempt?.abort();
+    speechAttempt = null;
+    globalThis.speechSynthesis?.cancel?.();
+  }
+  cancelMailMockSpeech = stopSpeech;
+
+  async function speak(message) {
+    stopSpeech();
+    const attempt = new AbortController();
+    speechAttempt = attempt;
+    speechFeedback.className = "message";
+    speechFeedback.textContent = t("mailMock.speechChecking");
+    try {
+      await speakLocalMockMetadata(t("mailMock.speechText", message), getLanguage(), {
+        signal: attempt.signal,
+        onError: () => {
+          if (speechAttempt !== attempt) return;
+          speechFeedback.className = "message error";
+          speechFeedback.textContent = t("mailMock.speechFailed");
+        },
+        onEnd: () => {
+          if (speechAttempt !== attempt) return;
+          speechAttempt = null;
+          speechFeedback.className = "message ok";
+          speechFeedback.textContent = t("mailMock.speechFinished");
+        },
+      });
+      if (attempt.signal.aborted) return;
+      speechFeedback.className = "message ok";
+      speechFeedback.textContent = t("mailMock.speaking");
+    } catch (error) {
+      if (attempt.signal.aborted || error?.code === "canceled") return;
+      speechFeedback.className = "message error";
+      speechFeedback.textContent = t(`mailMock.speechError.${["unsupported", "no-local-voice"].includes(error?.code) ? error.code : "failed"}`);
+    }
+  }
+
+  async function run(action, { clearBody = false, success } = {}) {
+    if (busy) return null;
+    busy = true;
+    refresh();
+    try {
+      const result = await action();
+      if (!result?.ok || !result.snapshot?.mailMock) {
+        if (result?.snapshot?.mailMock) onSnapshot(result.snapshot);
+        const code = MAIL_MOCK_ERRORS.has(result?.code) ? result.code : "internal";
+        say(`mailMock.error.${code}`, "error");
+        return null;
+      }
+      if (clearBody) {
+        shownBody = null;
+        aiCheck.checked = false;
+        stopSpeech();
+      }
+      onSnapshot(result.snapshot);
+      if (success) say(success);
+      return result;
+    } catch {
+      say("mailMock.error.internal", "error");
+      return null;
+    } finally {
+      busy = false;
+      refresh();
+    }
+  }
+
+  function renderList() {
+    const mail = state();
+    const key = JSON.stringify([mail.messages, mail.bodyOptIn, mail.status]);
+    if (key === listKey) return;
+    listKey = key;
+    const rows = mail.messages.map((message) => {
+      const controls = [el("button", { class: "btn small", type: "button", text: t("mailMock.speak"),
+        onclick: () => speak(message) })];
+      if (mail.bodyOptIn) controls.push(el("button", { class: "btn small", type: "button", text: t("mailMock.viewBody"),
+        onclick: async () => {
+          const result = await run(() => api.mailMock.viewBody(message.id));
+          if (result) {
+            shownBody = { id: message.id, body: result.body };
+            aiCheck.checked = false;
+            refresh();
+          }
+        } }));
+      return el("div", { class: "row stack mail-message" },
+        el("div", { class: "label" },
+          el("div", { class: "title", text: t("mailMock.subject", message) }),
+          el("div", { class: "desc", text: t("mailMock.sender", message) })),
+        el("div", { class: "actions" }, ...controls));
+    });
+    list.replaceChildren(...(rows.length ? rows : [el("div", { class: "empty", text: t(`mailMock.empty.${mail.status}`) })]));
+  }
+
+  function refresh() {
+    const mail = state();
+    enabled.checked = mail.enabled;
+    enabled.disabled = busy;
+    provider.value = mail.provider;
+    provider.disabled = busy;
+    status.className = `pill ${mail.status === "connected" ? "ok" : mail.status === "off" ? "off" : "warn"}`;
+    status.textContent = t(`mailMock.status.${mail.status}`);
+    statusError.hidden = !mail.error;
+    statusError.textContent = mail.error ? t(`mailMock.error.${mail.error}`) : "";
+    account.hidden = mail.status !== "connected";
+    account.textContent = mail.account ? t("mailMock.account", { account: mail.account }) : "";
+    begin.hidden = mail.status !== "ready";
+    approve.hidden = cancel.hidden = mail.status !== "pending";
+    disconnect.hidden = !["connected", "error"].includes(mail.status);
+    for (const button of [begin, approve, cancel, disconnect]) button.disabled = busy;
+    next.hidden = mail.status !== "connected";
+    next.disabled = busy || !mail.remaining;
+    remaining.textContent = t("mailMock.remaining", { count: mail.remaining });
+    remaining.hidden = mail.status !== "connected";
+    exhausted.hidden = mail.status !== "connected" || mail.remaining !== 0;
+    readAloud.checked = mail.readAloud;
+    readAloud.disabled = busy || mail.status !== "connected";
+    bodyOptIn.checked = mail.bodyOptIn;
+    bodyOptIn.disabled = busy || mail.status !== "connected";
+    spokenControls.hidden = bodyControls.hidden = mail.status !== "connected";
+    renderList();
+    const bodyVisible = mail.status === "connected" && mail.bodyOptIn &&
+      shownBody && mail.messages.some((item) => item.id === shownBody.id);
+    bodyPanel.hidden = !bodyVisible;
+    if (bodyVisible) bodyText.textContent = shownBody.body;
+    aiConfirm.disabled = busy || !bodyVisible || !aiCheck.checked;
+  }
+
+  sync(refresh);
+  return [
+    el("h1", { text: t("mailMock.title") }),
+    el("p", { class: "lead", text: t("mailMock.lead") }),
+    el("div", { class: "notice warn", text: t("mailMock.warning") }),
+    el("div", { class: "mail-status" }, status),
+    statusError,
+    el("div", { class: "group" },
+      row(t("mailMock.enable"), t("mailMock.enableDesc"),
+        el("label", { class: "switch" }, enabled, el("span", { class: "track" }))),
+      row(t("mailMock.provider"), t("mailMock.providerDesc"), provider)),
+    el("h2", { text: t("mailMock.authTitle") }),
+    el("p", { class: "lead small", text: t("mailMock.authDesc") }),
+    account,
+    el("div", { class: "actions" }, begin, approve, cancel, disconnect),
+    feedback,
+    el("h2", { text: t("mailMock.listTitle") }),
+    el("p", { class: "lead small", text: t("mailMock.listDesc") }),
+    list,
+    el("div", { class: "actions spaced" }, next, remaining),
+    exhausted,
+    spokenControls,
+    speechFeedback,
+    el("h2", { text: t("mailMock.bodyTitle") }),
+    bodyControls,
+    bodyPanel,
   ];
 }
 
@@ -1647,10 +1955,10 @@ async function loadUsage() {
 /** What the pet is doing now, in billing terms. */
 function currentBillingState() {
   const pet = snap.pet ?? {};
-  if (pet.sleeping) return { key: "sleeping", pill: "ok" };
-  if (pet.conn !== "ready") return { key: "offline", pill: "ok" };
-  if (pet.muted) return { key: "muted", pill: "ok" };
-  return { key: "listening", pill: "warn" };
+  if (pet.sleeping) return "sleeping";
+  if (pet.conn !== "ready") return "offline";
+  if (pet.muted) return "muted";
+  return "listening";
 }
 
 function usageRow(title, value) {
@@ -1724,26 +2032,31 @@ function sectionUsage() {
     days: el("div", { class: "group" }),
     prices: el("p", { class: "lead small" }),
   };
-  const stateTitle = el("div", { class: "title" });
-  const stateDesc = el("div", { class: "desc" });
-  const statePill = el("span", { class: "pill" });
+  const stateTitle = el("h3");
+  const stateDesc = el("p");
+  const stateStatus = el("span", { class: "usage-explainer-status" });
   sync(() => {
     const state = currentBillingState();
-    stateTitle.textContent = t(`usage.state.${state.key}`);
-    stateDesc.textContent = t(`usage.state.${state.key}Desc`);
-    statePill.className = `pill ${state.pill}`;
-    statePill.textContent = t(`usage.state.${state.key}Pill`);
+    stateTitle.textContent = t(`usage.state.${state}`);
+    stateDesc.textContent = t(`usage.state.${state}Desc`);
+    stateStatus.textContent = t(`usage.state.${state}Pill`);
   });
-  const BILLED = [
-    ["talk", "warn"],
-    ["listening", "warn"],
-    ["mute", "ok"],
-    ["sleep", "ok"],
-    ["scheduled", "warn"],
-    ["quit", "ok"],
-    ["copilot", "idle"],
-    ["data", "ok"],
+  const BILLED_GROUPS = [
+    ["conversation", ["talk", "listening", "mute", "sleep"]],
+    ["automation", ["scheduled", "quit"]],
+    ["information", ["copilot", "data"]],
   ];
+  const billedItem = (key) => {
+    const icon = el("span", { class: "usage-explainer-icon", "aria-hidden": "true" });
+    icon.innerHTML = BILLING_ICONS[key];
+    return el("li", {},
+      icon,
+      el("div", { class: "usage-explainer-content" },
+        el("div", { class: "usage-explainer-head" },
+          el("h4", { text: t(`usage.billed.${key}`) }),
+          el("span", { class: "usage-explainer-status", text: t(`usage.billed.${key}Pill`) })),
+        el("p", { text: t(`usage.billed.${key}Desc`) })));
+  };
   const link = (key, target) => el("button", { class: "link", type: "button", text: t(key), onclick: () => api.open(target) });
   queueMicrotask(() => void loadUsage());
   return [
@@ -1751,20 +2064,13 @@ function sectionUsage() {
     el("p", { class: "lead", text: t("usage.lead") }),
     usageRefs.notice,
     el("h2", { text: t("usage.now") }),
-    el("div", { class: "group" }, el("div", { class: "row" }, el("div", { class: "label" }, stateTitle, stateDesc), el("div", { class: "control" }, statePill))),
-    el("h2", { text: t("usage.billed") }),
-    el(
-      "div",
-      { class: "group" },
-      BILLED.map(([key, pill]) =>
-        el(
-          "div",
-          { class: "row" },
-          el("div", { class: "label" }, el("div", { class: "title", text: t(`usage.billed.${key}`) }), el("div", { class: "desc", text: t(`usage.billed.${key}Desc`) })),
-          el("div", { class: "control" }, el("span", { class: `pill ${pill}`, text: t(`usage.billed.${key}Pill`) })),
-        ),
-      ),
-    ),
+    el("div", { class: "usage-now" }, el("div", { class: "usage-explainer-head" }, stateTitle, stateStatus), stateDesc),
+    el("h2", { id: "usage-billed-heading", text: t("usage.billed") }),
+    el("p", { class: "usage-explainer-intro", text: t("usage.billed.intro") }),
+    ...BILLED_GROUPS.map(([group, keys]) =>
+      el("div", { class: "usage-guide-group" },
+        el("h3", { class: "usage-guide-title", id: `usage-billed-${group}`, text: t(`usage.billed.group.${group}`) }),
+        el("ul", { class: "usage-explainer", "aria-labelledby": `usage-billed-${group}` }, keys.map(billedItem)))),
     el(
       "div",
       { class: "section-head" },
@@ -1788,6 +2094,7 @@ const BUILDERS = {
   automations: sectionAutomations,
   mcp: sectionMcp,
   news: sectionNews,
+  mailMock: sectionMailMock,
   connection: sectionConnection,
   usage: sectionUsage,
   about: sectionAbout,
@@ -1797,6 +2104,7 @@ const BUILDERS = {
 // Page
 // ---------------------------------------------------------------------------
 function renderAll() {
+  cancelMailMockSpeech();
   syncers = [];
   setLanguage(snap.uiLanguage);
   document.title = t("settings.title");
@@ -1820,6 +2128,7 @@ function renderAll() {
 }
 
 function go(id, { keepScroll = false } = {}) {
+  if (current === "mailMock" && id !== "mailMock") cancelMailMockSpeech();
   current = SECTIONS.includes(id) ? id : "general";
   history.replaceState(null, "", `#${current}`);
   for (const section of content.querySelectorAll(".section")) section.hidden = section.id !== `section-${current}`;

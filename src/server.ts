@@ -24,9 +24,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CopilotClient, ToolSet, type CopilotSession, type SessionConfig } from "@github/copilot-sdk";
 import { z } from "zod";
+import { getAuthStatusWithRecovery, withTimeout } from "./copilot-startup.js";
 import { attachLive, type Announcement, type LiveSession, type LiveTool, type NoiseFilter, type SessionOptions } from "./live.js";
 import {
-  CATALOG, FEEDS, NEWS_CATEGORIES, asUntrustedNewsData, configureNewsSources, discoverNewsFeed, enabledFeedIds,
+  CATALOG, FEEDS, NEWS_CATEGORIES, asUntrustedNewsData, checkKeywordSources, configureNewsSources, discoverNewsFeed, enabledFeedIds,
   fetchArticle, fetchHeadlines, headlineFailure, keywordFeedIds, newsToolsFor, type Language,
 } from "./news.js";
 import { NewsFetchError } from "./news-network.js";
@@ -36,6 +37,7 @@ import { formatLocal, ReminderStore, resolveDueTime, type Reminder } from "./rem
 import { forwardTranscription, startWhisper, stopWhisper, whisperRunning } from "./stt.js";
 import { estimateUsd, PAID_PRICES, UsageStore } from "./usage.js";
 import { listJapaneseVoices, synthesize, TTS_MODEL_ID, ttsAvailable } from "./tts.js";
+import { writeShutdownMarker } from "./proxy-stop.js";
 
 // ---------------------------------------------------------------------------
 // Configuration (environment variables)
@@ -235,19 +237,11 @@ let copilotState: CopilotState = "starting";
 let copilotStarted: Promise<void> = Promise.resolve();
 const copilotUsable = (): boolean => copilotState === "starting" || copilotState === "ready";
 
-function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(message)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
-
 async function startCopilot(): Promise<void> {
   try {
     await withTimeout(client.start(), 30_000, "the Copilot runtime did not start within 30 s");
     if (!BYOK_BASE_URL) {
-      const auth = await withTimeout(client.getAuthStatus(), 15_000, "no answer to the sign-in check within 15 s");
+      const auth = await getAuthStatusWithRecovery(client);
       if (!auth.isAuthenticated) {
         copilotState = "signed-out";
         console.log("[copilot] not signed in: ask_copilot and /v1/chat/completions are off (sign in with the Copilot CLI, then restart)");
@@ -1195,10 +1189,17 @@ function keywordPattern(keyword: string): RegExp {
 
 async function runKeywordWatch(automation: Automation): Promise<void> {
   if (automation.trigger.type !== "keyword") return;
+  const checked = await checkKeywordSources();
+  if (checked.kind === "no-sources") {
+    automations.addHistory(automation, "error", automation.language === "ja"
+      ? "キーワード通知の取得元がありません。「設定」→「ニュース」でサイトをオンにしてください。"
+      : "No news sources are enabled for keyword alerts. Turn on a site in Settings → News.");
+    publishEvent({ type: "automation-error", id: automation.id, name: automation.name });
+    return;
+  }
   const keywords = automation.trigger.keywords;
   const patterns = keywords.map(keywordPattern);
-  const feeds = keywordFeedIds();
-  const results = await Promise.allSettled(feeds.map((feed) => fetchHeadlines(feed, 20, 200)));
+  const { feeds, results } = checked;
   for (let i = 0; i < results.length; i++) {
     const result = results[i];
     if (result.status === "rejected") {
@@ -1291,7 +1292,7 @@ async function shutdown(): Promise<void> {
     if (result.status === "rejected") console.error("[copilot] could not disconnect a news research session:", result.reason);
   }
   await client.stop().catch(() => {});
-  console.log("[proxy] stopped");
+  writeShutdownMarker(process.env.TONARIN_PROXY_LOG_FILE);
   process.exit(0);
 }
 process.on("SIGINT", shutdown);

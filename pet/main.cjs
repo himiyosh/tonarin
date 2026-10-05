@@ -40,6 +40,8 @@ const { resolveLanguage, translator } = require("./i18n.cjs");
 const { createPets } = require("./pets.cjs");
 const { createDeviceFlow, isTransient } = require("./github.cjs");
 const { layoutFor } = require("./layout.cjs");
+const { createMailMock, MailMockError } = require("./mail-mock.cjs");
+const { stopProxy } = require("./proxy-process.cjs");
 const { Settings, catalog } = require("./settings.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -134,6 +136,7 @@ const CODEX_PETS_DIR = env("CODEX_PETS_DIR", path.join(os.homedir(), ".codex", "
 const pets = createPets(CODEX_PETS_DIR);
 
 let settings; // created when the app is ready (safeStorage needs it)
+let mailMock; // main-process-only fake authorization state and tokens
 let t = translator("ja");
 const uiLanguage = () => resolveLanguage(settings.values.language, app.getLocale());
 const speechLanguage = () => (settings.values.speechLanguage === "auto" ? uiLanguage() : settings.values.speechLanguage);
@@ -198,6 +201,7 @@ async function waitForPort(port, timeoutMs) {
 let proxyChild; // { stop(): Promise<void> } while the app runs the proxy
 let proxyRunning = false;
 let proxyStatus = null; // what the proxy reports on /v1/status: { live, copilot }
+let smokeProxyFailure = false;
 
 /** A free TCP port on 127.0.0.1 (the OS picks one; the proxy binds it a moment later). */
 function freePort() {
@@ -225,6 +229,8 @@ function startProxy() {
     AUTOMATIONS_FILE: path.join(app.getPath("userData"), "automations.json"),
     USAGE_FILE: path.join(app.getPath("userData"), "usage.json"), // token counts per day, no content
   };
+  if (BUNDLED_PROXY) childEnv.TONARIN_PROXY_LOG_FILE = logFile;
+  else delete childEnv.TONARIN_PROXY_LOG_FILE;
   if (env("DEBUG_REQUESTS")) childEnv.DEBUG_REQUESTS = env("DEBUG_REQUESTS"); // the bundled proxy does not read .env
   // The settings window (keychain) wins over .env. The bundled proxy does not read .env itself, so pass it on.
   const key = settings.getSecret("geminiApiKey") || ENV_GEMINI_KEY;
@@ -233,6 +239,7 @@ function startProxy() {
   let exited;
   const onExit = (code) => {
     console.log(`[pet] proxy exited (code ${code}); see ${logFile}`);
+    if (code !== 0) smokeProxyFailure = true;
     if (proxyChild === handle) {
       proxyChild = undefined;
       proxyRunning = false;
@@ -243,15 +250,7 @@ function startProxy() {
   let handle;
   // Stopping lets the proxy shut down gracefully, so the Copilot runtime and MCP servers it started stop too: a signal
   // on macOS, a message on Windows (it has no signals a process can catch). If that fails, the process is ended.
-  const stopWith = (graceful, kill) => () => {
-    try {
-      graceful();
-    } catch {
-      kill(); // already gone, or the channel closed
-    }
-    const force = setTimeout(kill, 8000); // the proxy gives up on a graceful stop after 5 s by itself
-    return exited.finally(() => clearTimeout(force));
-  };
+  const stopWith = (graceful, kill) => () => stopProxy(graceful, kill, exited);
   if (BUNDLED_PROXY) {
     const child = utilityProcess.fork(path.join(ROOT, "dist", "server.mjs"), [], {
       serviceName: `${APP_NAME} proxy`,
@@ -259,9 +258,14 @@ function startProxy() {
       env: childEnv,
       stdio: "pipe",
     });
+    if (!child.stdout || !child.stderr) throw new Error("the bundled proxy has no output pipes");
     const log = fs.createWriteStream(logFile, { flags: "a" });
-    child.stdout?.pipe(log);
-    child.stderr?.pipe(log);
+    log.on("error", (error) => {
+      console.error("[pet] could not save the proxy log:", error);
+      smokeProxyFailure = true;
+    });
+    child.stdout.pipe(log);
+    child.stderr.pipe(log);
     exited = new Promise((resolve) => child.once("exit", resolve));
     handle = { stop: stopWith(() => (IS_WINDOWS ? child.postMessage({ type: "shutdown" }) : child.kill()), () => child.kill()) };
   } else {
@@ -272,10 +276,18 @@ function startProxy() {
       stdio: ["ignore", log, log, "ipc"], // IPC: the stop message on Windows; the proxy also stops if the app goes away
       windowsHide: true, // no console window on Windows
     });
+    fs.closeSync(log);
     exited = new Promise((resolve) => child.once("exit", resolve));
     handle = {
       stop: stopWith(
-        () => (IS_WINDOWS ? child.send({ type: "shutdown" }, (error) => error && child.kill()) : child.kill("SIGINT")),
+        (force) => (IS_WINDOWS
+          ? child.send({ type: "shutdown" }, (error) => {
+            if (error) {
+              console.error("[pet] could not ask the proxy to shut down:", error);
+              force();
+            }
+          })
+          : child.kill("SIGINT")),
         () => child.kill(),
       ),
     };
@@ -287,7 +299,8 @@ function startProxy() {
 
 /** Asks the proxy what works (Gemini key present, Copilot signed in) until Copilot has finished starting. */
 async function refreshProxyStatus() {
-  for (let attempt = 0; attempt < 30; attempt++) {
+  // Cover the proxy's 30 s SDK start, 15 s sign-in check, 3 s health probe and 15 s retry.
+  for (let attempt = 0; attempt < 50; attempt++) {
     try {
       const response = await fetch(`http://127.0.0.1:${PORT}/v1/status`, {
         headers: { Authorization: `Bearer ${proxyKey()}` },
@@ -375,7 +388,9 @@ function wakePetForDelivery() {
   else sendToPet("wake");
 }
 function notify(title, body) {
-  if (Notification.isSupported()) new Notification({ title: `${APP_NAME}: ${title}`, body: String(body ?? "").slice(0, 200) }).show();
+  if (!Notification.isSupported()) return false;
+  new Notification({ title: `${APP_NAME}: ${title}`, body: String(body ?? "").slice(0, 200) }).show();
+  return true;
 }
 
 function onProxyEvent(event) {
@@ -482,7 +497,7 @@ async function restartProxy() {
   const child = proxyChild;
   if (!child) return false;
   proxyStatus = null;
-  await Promise.race([child.stop(), new Promise((resolve) => setTimeout(resolve, 7000))]);
+  await child.stop();
   startProxy(); // same port: the pet keeps its address
 
   proxyRunning = await waitForPort(PORT, 20_000);
@@ -514,6 +529,7 @@ function snapshot() {
     codexPetsDir: CODEX_PETS_DIR.replace(os.homedir(), "~"),
     pet: petState, // muted / sleeping / connection: the settings window explains what is billed right now
     githubSignIn: Boolean(GITHUB_CLIENT_ID),
+    mailMock: mailMock.snapshot(),
   };
 }
 
@@ -539,6 +555,10 @@ let petState = { muted: false, sleeping: false, conn: "connecting" };
 
 function fromOurPages(event) {
   return event.senderFrame?.url?.startsWith("pet://app/") ?? false;
+}
+
+function fromSettingsPage(event) {
+  return event.sender === settingsWin?.webContents && event.senderFrame?.url?.split("#")[0] === SETTINGS_URL;
 }
 
 function lockDown(contents) {
@@ -1106,12 +1126,42 @@ ipcMain.handle("settings:get", (event) => (fromOurPages(event) ? snapshot() : un
 
 ipcMain.handle("settings:set", async (event, patch) => {
   if (!fromOurPages(event) || !patch || typeof patch !== "object") return snapshot();
+  if (Object.hasOwn(patch, "mailMockEnabled") || Object.hasOwn(patch, "mailMockProvider")) {
+    throw new Error("Mail demo settings require the dedicated mock controls");
+  }
   const { proxyKey: _ignored, customFeeds: _newsSites, ...allowed } = patch; // sites go through verified discovery instead
   if (Object.hasOwn(allowed, "feeds") && !settings.isValid("feeds", allowed.feeds)) throw new Error("Invalid news source selection");
   const changed = settings.update(allowed);
   if (changed.includes("feeds")) await newsSync;
   else if (changed.some((key) => ["language", "speechLanguage"].includes(key))) await newsSync.then(() => true, () => false);
   return snapshot();
+});
+
+ipcMain.handle("settings:mail-mock", (event, input) => {
+  if (!fromSettingsPage(event)) return { ok: false, code: "unauthorized" };
+  try {
+    let result = {};
+    switch (input?.action) {
+      case "enable": mailMock.setEnabled(input.enabled); break;
+      case "provider": mailMock.selectProvider(input.provider); break;
+      case "begin": mailMock.begin(); break;
+      case "approve": mailMock.approve(); break;
+      case "cancel": mailMock.cancel(); break;
+      case "disconnect": mailMock.disconnect(); break;
+      case "next": result = mailMock.nextMail(); break;
+      case "body-opt-in": mailMock.setBodyOptIn(input.enabled); break;
+      case "read-aloud": mailMock.setReadAloud(input.enabled); break;
+      case "body": result = mailMock.viewBody(input.id); break;
+      case "ai-confirmation": result = mailMock.confirmAiTransfer(input.id, input.confirmed); break;
+      default: throw new MailMockError("invalid");
+    }
+    broadcastSettings();
+    return { ok: true, ...result, snapshot: snapshot() };
+  } catch (error) {
+    if (error instanceof MailMockError) return { ok: false, code: error.code, snapshot: snapshot() };
+    console.error("[mail mock] operation failed", error);
+    return { ok: false, code: "internal" };
+  }
 });
 
 ipcMain.handle("settings:add-news-feed", async (event, input) => {
@@ -1391,7 +1441,16 @@ async function runSmokeTest() {
         const url = page.querySelector('input.news-url');
         const fields = page.querySelectorAll(".news-add-controls select").length;
         await window.pet.settings.set({ feeds: [] });
-        const emptyVisible = !page.querySelector(".news-empty").hidden;
+        // The settings:set reply can arrive before the separate settings:changed render.
+        let emptyVisible = false;
+        for (let attempt = 0; attempt < 60; attempt++) {
+          const empty = page.querySelector(".news-empty");
+          if (empty && !empty.hidden) {
+            emptyVisible = true;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
         url.value = "http://127.0.0.1/rss";
         page.querySelector(".news-add-controls button").click();
         const invalidUrlVisible = !!page.querySelector(".message.error")?.textContent;
@@ -1405,6 +1464,87 @@ async function runSmokeTest() {
       }
     } catch (error) {
       smokeProblems.push(`news settings test failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  if (settingsWin && !settingsWin.isDestroyed() && report.settings?.sections) {
+    try {
+      report.mailMock = await settingsWin.webContents.executeJavaScript(`(async () => {
+        document.querySelector('[data-section="mailMock"]').click();
+        const page = document.getElementById("section-mailMock");
+        const state = (await window.pet.settings.get()).mailMock;
+        const localVoiceLocales = await new Promise((resolve) => {
+          const speech = globalThis.speechSynthesis;
+          if (!speech) return resolve([]);
+          const voices = () => speech.getVoices().filter((voice) => voice.localService).map((voice) => voice.lang).slice(0, 5);
+          let timer;
+          const ready = () => {
+            const available = voices();
+            if (!available.length) return;
+            clearTimeout(timer);
+            speech.removeEventListener("voiceschanged", ready);
+            resolve(available);
+          };
+          speech.addEventListener("voiceschanged", ready);
+          timer = setTimeout(() => {
+            speech.removeEventListener("voiceschanged", ready);
+            resolve(voices());
+          }, 2000);
+          ready();
+        });
+        return {
+          visible: !page.hidden,
+          labeled: page.querySelector("h1").textContent.includes("MOCK/DEMO"),
+          statusLabeled: page.querySelector(".mail-status").textContent.includes("MOCK/DEMO"),
+          off: state.status === "off" && !page.querySelector('input[role="switch"]').checked,
+          empty: !page.querySelector(".mail-message") && page.querySelector(".mail-body-panel").hidden,
+          localVoiceLocales,
+        };
+      })()`);
+      if (!report.mailMock.visible || !report.mailMock.labeled || !report.mailMock.statusLabeled ||
+          !report.mailMock.off || !report.mailMock.empty) {
+        smokeProblems.push("the mock mail screen did not remain labeled, empty and off by default");
+      }
+      report.mailMock.flow = await settingsWin.webContents.executeJavaScript(`(async () => {
+        const demo = window.pet.settings.mailMock;
+        const enabled = await demo.setEnabled(true);
+        const pending = await demo.begin();
+        const canceled = await demo.cancel();
+        const disabled = await demo.setEnabled(false);
+        return {
+          enabled: enabled.ok && enabled.snapshot.mailMock.status === "ready",
+          pending: pending.ok && pending.snapshot.mailMock.status === "pending",
+          canceled: canceled.ok && canceled.snapshot.mailMock.status === "ready",
+          offAgain: disabled.ok && disabled.snapshot.mailMock.status === "off",
+        };
+      })()`);
+      if (!report.mailMock.flow.enabled || !report.mailMock.flow.pending || !report.mailMock.flow.canceled ||
+          !report.mailMock.flow.offAgain) {
+        smokeProblems.push("the local mock authorization steps could not return safely to off");
+      }
+      const beforeZoom = await settingsWin.webContents.executeJavaScript("window.innerWidth");
+      settingsWin.webContents.setZoomFactor(2);
+      for (let attempt = 0; attempt < 20; attempt++) {
+        await wait(50); // Chromium applies zoom asynchronously on CI.
+        report.mailMock.zoom200 = await settingsWin.webContents.executeJavaScript(`(() => {
+          const content = document.getElementById("content");
+          return {
+            viewport: window.innerWidth,
+            stacked: getComputedStyle(document.querySelector(".app")).flexDirection === "column",
+            fits: content.scrollWidth <= content.clientWidth + 1,
+          };
+        })()`);
+        if (report.mailMock.zoom200.viewport < beforeZoom * 0.75) break;
+      }
+      report.mailMock.zoom200.before = beforeZoom;
+      if (settingsWin.webContents.getZoomFactor() < 1.9 ||
+          report.mailMock.zoom200.viewport >= beforeZoom * 0.75 || !report.mailMock.zoom200.fits ||
+          (report.mailMock.zoom200.viewport <= 700 && !report.mailMock.zoom200.stacked)) {
+        smokeProblems.push("the mock mail settings overflow at 200% text scaling");
+      }
+    } catch (error) {
+      smokeProblems.push(`mock mail settings test failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      settingsWin.webContents.setZoomFactor(1);
     }
   }
   // The proxy, and the Copilot runtime behind it (it can take a while to start).
@@ -1452,6 +1592,7 @@ app.whenReady().then(async () => {
   watchEventLoop();
   if (!process.env.TONARIN_USER_DATA) migrateFromPreviousName(); // only into the app's usual folder
   settings = new Settings(app.getPath("userData"));
+  mailMock = createMailMock({ settings, notify, translate: (key, vars) => t(key, vars) });
   t = translator(uiLanguage(), process.platform);
   settings.on("change", (keys) => {
     if (keys.includes("language")) {
@@ -1533,8 +1674,22 @@ app.on("window-all-closed", () => {
 let stoppingProxy = false;
 app.on("will-quit", (event) => {
   // Let the proxy shut down gracefully first: it also stops the Copilot runtime it started.
-  if (!proxyChild || stoppingProxy) return;
+  if (stoppingProxy) return;
+  if (!proxyChild) {
+    if (SMOKE_TEST_FILE && smokeProxyFailure) {
+      event.preventDefault();
+      app.exit(1);
+    }
+    return;
+  }
   stoppingProxy = true;
   event.preventDefault();
-  Promise.race([proxyChild.stop(), new Promise((resolve) => setTimeout(resolve, 6000))]).finally(() => app.quit());
+  proxyChild.stop().then(
+    () => (SMOKE_TEST_FILE && smokeProxyFailure ? app.exit(1) : app.quit()),
+    (error) => {
+      console.error("[pet] proxy shutdown failed:", error);
+      if (SMOKE_TEST_FILE) app.exit(1);
+      else app.quit();
+    },
+  );
 });

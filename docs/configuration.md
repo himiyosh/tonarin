@@ -20,6 +20,30 @@ Everything is in one folder: `~/Library/Application Support/Tonarin/` on a Mac, 
 On Windows the app itself is installed in `%LOCALAPPDATA%\Programs\tonarin\`. Uninstalling it (Settings → Apps)
 keeps the data folder above.
 
+### Mail prototype (MOCK/DEMO)
+
+**Settings → Mail (MOCK)** is an off-by-default, local-only prototype on Mac and Windows. Choose a Gmail-style or
+Outlook-style fictional account, then start and approve a simulated OAuth authorization-code flow. The main process
+generates a random PKCE verifier, S256 challenge and anti-CSRF state, checks the mock responses, and stores only a
+**fake** one-hour token in `secrets.json` through the existing Electron `safeStorage` helper. If encryption is
+unavailable, authorization fails explicitly instead of saving a plaintext token. Switching providers, turning the
+demo off, or disconnecting clears fake tokens and the current scripted event stream.
+The fake Gmail-style list returns IDs followed by separate sender/subject header responses; the fake
+Graph-style list returns `value` entries with `from.emailAddress` and `subject`. Neither metadata response
+contains a body or attachment.
+
+The list begins with one fictional sender and subject; **Trigger next mock new-mail event** adds at most two more
+fictional entries and requests an OS notification labeled MOCK/DEMO. Read-aloud is off by default and uses only an
+installed **local** system voice through Web Speech in the settings window; if none is available, the UI reports
+that failure instead of sending audio to an online service. Both the body-view opt-in and the separate per-message
+AI-transfer confirmation are simulated, off by default, and held only for the current app session. A body is shown
+only after opt-in and explicit selection; even after the separate confirmation, **no summary is generated and
+nothing is sent to Gemini or Copilot**. The confirmation is not authorization for a future live integration.
+
+This prototype never opens a provider sign-in page, registers an app, requests Gmail/Graph scopes, accesses a real
+mailbox, downloads attachments, sends/deletes/marks mail read, or calls a mail or AI endpoint on its demo path.
+Real mail integration and public distribution require separate decisions and implementation.
+
 ## Environment variables
 
 Put them in `.env` (see [`.env.example`](../.env.example)) or export them. The packaged app does not read `.env`;
@@ -89,8 +113,10 @@ these checks; a 401/402/403 response or detectable paywall/membership marker ret
 reason **without article text**. Unknown soft paywalls cannot be identified before a GET; Tonarin does not bypass
 login, membership or payment. XML DTDs and external entities are refused. Tool results mark headlines, descriptions
 and permitted article text as untrusted data, not instructions. Feed-only summaries use RSS `description` or Atom
-`summary`, never embedded full-content fields. Keyword watches continue to check the original 12 feeds and also
-check enabled new and personal sources.
+`summary`, never embedded full-content fields. Keyword watches and ordinary headlines use the same enabled sources,
+including selected new and personal sites; switching a source off stops keyword checks for it too. With no sources
+enabled, neither fetches a feed, and a scheduled keyword check records a no-sources error in automation history
+and notifies the user.
 
 As of 2026-09-30, verified Japanese built-ins beyond technology cover **general, prefectural industry and
 public-life notices**, not large-media reporting. No Japanese science source met the same feed/rights criteria;

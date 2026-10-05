@@ -61,6 +61,7 @@ already have, and tells you the answer in its own words.
 | **Conversation** | Real-time voice with Gemini Live, barge-in, captions of both sides, Japanese and English (UI and speech are set separately). |
 | **Copilot deep dives** | `ask_copilot` hands articles, comparisons, explanations and design questions to a sandboxed Copilot session. |
 | **News** | Keep the 12 Japanese/English tech feeds as defaults; opt into verified Japanese public-agency, Osaka public-life and GOV.UK/NSF English RSS sources, or add your own public feed. Publisher-restricted sources provide headlines/descriptions only; personal article reads check robots.txt and do not return paywalled text. |
+| **Mail (MOCK/DEMO)** | Off by default: try fictional Gmail-style and Outlook-style authorization, sender/subject notices and local read-aloud. No real sign-in, mailbox access or AI transfer. |
 | **Reminders and automations** | "Remind me in 20 minutes", a morning briefing, scheduled Copilot research, break nudges and keyword watch, with a history you can review. |
 | **Connected apps (MCP)** | Model Context Protocol servers become the pet's tools: your Mac's calendar (Google, iCloud, Exchange; macOS), Microsoft Learn, and GitHub (read-only, with **Sign in with GitHub**). |
 | **Noise filter** | Only voice-like sound reaches Gemini, so typing, fans or a door do not start a conversation. Three levels. |
@@ -203,13 +204,20 @@ What the paid tier bills, and how Tonarin keeps it low:
 
 Everything a user needs is in the settings window (menu bar or notification-area icon, right-click → Settings, or
 <kbd>⌘</kbd> <kbd>,</kbd> on a Mac): general, character, conversation and voice, automations, connected apps, news,
-connection, usage and cost. Settings are stored in `~/Library/Application Support/Tonarin/` on a Mac and in
+the mock mail prototype, connection, usage and cost. Settings are stored in `~/Library/Application Support/Tonarin/` on a Mac and in
 `%APPDATA%\Tonarin\` on Windows.
 
+**Settings → Mail (MOCK)** uses only scripted fictional messages. The body-view toggle and separate AI-transfer
+confirmation demonstrate consent without fetching real mail or generating an AI summary. See the
+[mock mail boundaries](docs/configuration.md#mail-prototype-mockdemo).
+
 In **Settings → News**, switch topics or individual sources on and off, or add a public HTTPS site or RSS/Atom URL.
-Tonarin discovers advertised feeds; sites without one cannot be added. Your original news choices remain unchanged,
-and new built-in topics are opt-in. The original technology feeds and Osaka notices are **feed-only**: adding the
-same site yourself never unlocks its article text. For other personal sources, an article can be read only from
+The add form is near the top and shows how many of the 10 personal-site slots remain. Tonarin discovers advertised
+feeds; sites without one cannot be added. Headlines and keyword alerts check only the enabled sites; with all sites
+off, no feed is fetched and a scheduled keyword check records an error explaining how to turn sources back on.
+Your original news choices remain unchanged, and new built-in topics are opt-in. The original technology feeds and
+Osaka notices are **feed-only**: adding the same site yourself never unlocks their article text. For other personal
+sources, an article can be read only from
 the **exact host you entered** after a robots.txt check, without credentials or paywall bypass; a feed hosted
 elsewhere does not authorize its article hosts. Japanese general, industry and living notices have built-in
 options, while science currently has no eligible verified Japanese source and shows **候補なし**. See
@@ -234,6 +242,9 @@ Environment variables for development and for the standalone proxy are listed in
 | `npm run icon` | Rebuild the Liquid Glass icon (needs Xcode 26+) |
 | `npm run icon:derive` | Rebuild the Windows icons and the download page images from the app icon (needs Pillow) |
 | `npm run hooks` | Enable the repo's Git hooks (blocks direct pushes to `main`) |
+
+Packaged smoke accepts a signed-out Copilot runtime, but requires an actual sign-in status response. If the first check stalls, the proxy retries once only after the runtime answers a separate status probe; a runtime that stays unavailable still fails.
+The bundled proxy writes its graceful-stop marker directly to `proxy.log` before exiting, so a buffered output pipe cannot lose it. Missing markers, abnormal or timed-out proxy exits, and app self-check errors still fail.
 
 ```text
 tonarin/
