@@ -1441,7 +1441,16 @@ async function runSmokeTest() {
         const url = page.querySelector('input.news-url');
         const fields = page.querySelectorAll(".news-add-controls select").length;
         await window.pet.settings.set({ feeds: [] });
-        const emptyVisible = !page.querySelector(".news-empty").hidden;
+        // The settings:set reply can arrive before the separate settings:changed render.
+        let emptyVisible = false;
+        for (let attempt = 0; attempt < 60; attempt++) {
+          const empty = page.querySelector(".news-empty");
+          if (empty && !empty.hidden) {
+            emptyVisible = true;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
         url.value = "http://127.0.0.1/rss";
         page.querySelector(".news-add-controls button").click();
         const invalidUrlVisible = !!page.querySelector(".message.error")?.textContent;
