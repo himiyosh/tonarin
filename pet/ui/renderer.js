@@ -17,7 +17,7 @@
  */
 import { CHARACTERS, characterName } from "./characters.js";
 import { applyI18n, getLanguage, setLanguage, t } from "./i18n.js";
-import { speakLocalText } from "./mail-mock-speech.js";
+import { speakLocalText } from "./local-speech.js";
 import { loadSprite, ROW } from "./sprite.js";
 import { createSpeechGate } from "./speech-gate.js";
 

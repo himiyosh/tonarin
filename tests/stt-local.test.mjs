@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-test("local PCM transcription sends a WAV utterance to whisper-server", async () => {
+test("local PCM transcription sends a WAV utterance to whisper-server", { skip: process.platform === "win32" }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "tonarin-whisper-test-"));
   const binary = join(dir, "whisper-server");
   const model = join(dir, "model.bin");
