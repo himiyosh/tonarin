@@ -29,11 +29,6 @@ contextBridge.exposeInMainWorld("pet", {
     onChanged: (callback) => ipcRenderer.on("settings:changed", (_event, snapshot) => callback(snapshot)),
     onSection: (callback) => ipcRenderer.on("settings:section", (_event, section) => callback(section)),
     usage: () => ipcRenderer.invoke("settings:usage"),
-    news: {
-      add: (input) => ipcRenderer.invoke("settings:add-news-feed", input),
-      remove: (id) => ipcRenderer.invoke("settings:remove-news-feed", id),
-      sync: () => ipcRenderer.invoke("settings:sync-news-feeds"),
-    },
     mailMock: {
       setEnabled: (enabled) => ipcRenderer.invoke("settings:mail-mock", { action: "enable", enabled }),
       selectProvider: (provider) => ipcRenderer.invoke("settings:mail-mock", { action: "provider", provider }),

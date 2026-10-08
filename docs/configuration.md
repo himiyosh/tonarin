@@ -22,8 +22,10 @@ keeps the data folder above.
 
 ### Mail prototype (MOCK/DEMO)
 
-**Settings → Mail (MOCK)** is an off-by-default, local-only prototype on Mac and Windows. Choose a Gmail-style or
-Outlook-style fictional account, then start and approve a simulated OAuth authorization-code flow. The main process
+The mail prototype is not shown in normal builds. Developers may set `TONARIN_ENABLE_MAIL_MOCK=1` before starting
+the app to expose a local-only **Mail (MOCK)** page on Mac and Windows. Without that gate, the page is absent and
+the dedicated IPC route returns `unavailable`. Choose a Gmail-style or Outlook-style fictional account, then start
+and approve a simulated OAuth authorization-code flow. The main process
 generates a random PKCE verifier, S256 challenge and anti-CSRF state, checks the mock responses, and stores only a
 **fake** one-hour token in `secrets.json` through the existing Electron `safeStorage` helper. If encryption is
 unavailable, authorization fails explicitly instead of saving a plaintext token. Switching providers, turning the
@@ -43,6 +45,10 @@ nothing is sent to Gemini or Copilot**. The confirmation is not authorization fo
 This prototype never opens a provider sign-in page, registers an app, requests Gmail/Graph scopes, accesses a real
 mailbox, downloads attachments, sends/deletes/marks mail read, or calls a mail or AI endpoint on its demo path.
 Real mail integration and public distribution require separate decisions and implementation.
+Before that work resumes, the project must define provider ownership and minimum OAuth scopes; whether notifications,
+sender, subject, body and attachments may be read; retention and deletion; background polling; write operations such
+as send, reply, delete and mark-read; and the exact preview and consent required before any metadata or body is sent
+to GitHub Copilot or another AI.
 
 ## Environment variables
 
@@ -58,6 +64,7 @@ its settings window is the source of truth there.
 | `COPILOT_MODEL` | `gpt-5.4-mini` | Copilot model id. `npm run models` lists what your plan allows; `npm run bench` compares latency |
 | `COPILOT_REASONING_EFFORT` | unset | `none`, `low`, … |
 | `COPILOT_GITHUB_TOKEN` | unset | Use a token instead of the Copilot CLI sign-in |
+| `COPILOT_CLI_PATH` | auto-detected on macOS | Override the Copilot CLI executable used by the SDK |
 | `COPILOT_SANDBOX_DIR` | `copilot-proxy-sandbox` in the system temp folder | Copilot's working folder. Keep it outside any repository |
 | `FILLER_TEXT` | `ちょっと調べてみますね。` | What the OpenAI-compatible endpoint streams while a tool runs |
 | `LLM_BASE_URL` / `LLM_MODEL` | unset | Bring your own OpenAI-compatible model instead of Copilot (for offline tests) |
@@ -74,6 +81,17 @@ microphone -> speech gate -> whisper.cpp on 127.0.0.1 -> final text -> GitHub Co
 Audio remains on the computer. Tonarin sends only the final transcript and conversation context to GitHub Copilot.
 Replies are spoken with an installed local Web Speech voice whose language matches the conversation. If no matching
 local voice is installed, Tonarin reports the problem instead of using a cloud speech service.
+
+The local renderer buffers each speech-gate candidate until it ends. Opening the gate alone does not interrupt an
+active Copilot reply. Tonarin first completes local transcription, rejects empty output and narrowly identified
+silence hallucinations, and only then replaces an active reply with the accepted utterance. The existing speech
+thresholds, soft-speech behavior, echo suppression and barge-in remain in use; local read-aloud can stop promptly
+when the stronger speaking-while-playing evidence opens the gate.
+
+Local ASR, Copilot and legacy Gemini errors carry an explicit backend and stable error category. A Copilot
+`session.idle` timeout is shown as a recoverable Copilot reply timeout, the affected conversation is rebuilt, and
+the next utterance can retry without falling back to Gemini. Gemini key and quota guidance is shown only while the
+Gemini backend is active.
 
 Install `whisper-server` from whisper.cpp and place
 `ggml-large-v3-turbo-q5_0.bin` in `models/` under Tonarin's data folder
@@ -110,26 +128,14 @@ connection, so these are only defaults for other clients.
 
 ### News sources
 
-In **Settings → News**, switch public sources on individually or by topic (technology, general, business, science,
-living). The original 12 technology feeds remain the language-specific defaults; new built-in sources are opt-in,
-and existing saved selections are preserved. With the default selection, a personal site is enabled when its
-language matches the pet's speech language (English practice uses the English set). Up to 10 personal sites may
-be saved and up to 30 feeds selected.
+Tonarin no longer exposes a News settings page, source switches or personal-feed registration. News conversations
+and keyword watches use the original language-specific technology defaults from `src/catalog.json` (12 feeds across
+Japanese and English). Changing the speech language changes the default set. Legacy `feeds` and `customFeeds`
+values remain in `settings.json` for non-destructive compatibility but are ignored by the app and cannot be changed
+through the settings bridge.
 
-Add either a public HTTPS RSS/Atom URL or a public HTTPS site URL. Tonarin checks advertised
-`<link rel="alternate" type="application/rss+xml">` / Atom links and a few standard feed paths; it will not save
-a site without a readable feed. Removing the site revokes its article permission. A feed host is **not** an article
-host: only the exact hostname of the URL you entered is authorized for the added site's `read_article` calls.
-When the feed links to a different article host, the headline works but article text cannot be fetched; add that
-article site's own URL separately only if it also publishes RSS/Atom. Original technology built-ins retain their
-publisher-domain matching for the **restriction** (including subdomains); new built-ins list exact article hosts.
-**Every original technology
-built-in and the Osaka feeds are feed-only** because article-body reuse has not been individually licensed.
-This restriction takes precedence over a matching personal feed, including one saved before this version.
-The other listed built-ins with verified article-text reuse terms retain article access. Feeds whose publisher
-explicitly disallows this app's RSS/AI use cannot be added as personal sites or reached through feed redirects.
-Personal feeds with publisher or article links identifying such a source are rejected too; rewritten links on an
-unrelated third-party feed cannot be reliably attributed, so users must still check the publisher's terms.
+The catalog still documents previously evaluated public sources and their reuse evidence for future product
+decisions. Sources outside the original defaults are not selected by the normal app.
 
 News fetching uses native HTTPS without a proxy, pins validated public DNS addresses to each socket and
 rechecks the connected IP. Redirects (at most four) undergo the same checks; article redirects must also stay
@@ -138,28 +144,24 @@ the same pinned HTTPS transport (up to 500 KiB) and checks the article path for 
 it also checks each article redirect's path. A missing robots.txt (204, 404, 410) has no rules, whereas denial,
 authentication errors, server errors, unreadable policies and network failures stop the article request.
 Requests to local/private/link-local networks (including IPv4-mapped IPv6) and compressed responses are refused.
-Feed/site responses are capped at 1 MiB, article HTML at 2 MiB, and article checks share a 12-second timeout
-(15 seconds for discovery). No cookies or credentials are sent. Anonymous public article GET is allowed after
+Feed responses are capped at 1 MiB, article HTML at 2 MiB, and article checks share a 12-second timeout.
+No cookies or credentials are sent. Anonymous public article GET is allowed after
 these checks; a 401/402/403 response or detectable paywall/membership marker returns the original link and a
 reason **without article text**. Unknown soft paywalls cannot be identified before a GET; Tonarin does not bypass
 login, membership or payment. XML DTDs and external entities are refused. Tool results mark headlines, descriptions
 and permitted article text as untrusted data, not instructions. Feed-only summaries use RSS `description` or Atom
-`summary`, never embedded full-content fields. Keyword watches and ordinary headlines use the same enabled sources,
-including selected new and personal sites; switching a source off stops keyword checks for it too. With no sources
-enabled, neither fetches a feed, and a scheduled keyword check records a no-sources error in automation history
-and notifies the user.
+`summary`, never embedded full-content fields. Keyword watches and ordinary headlines use the same language-specific
+default source set.
 
-As of 2026-09-30, verified Japanese built-ins beyond technology cover **general, prefectural industry and
-public-life notices**, not large-media reporting. No Japanese science source met the same feed/rights criteria;
-its Japanese category visibly says **候補なし** (or **No sources available** in English UI). The topic switches
-cover available sources from both languages; add a personal feed for other topics only after checking its terms.
+As of 2026-09-30, the evaluated catalog beyond the active defaults covers Japanese public administration and Osaka
+notices plus English government and science feeds. These entries are retained as rights research, not as selectable
+normal-app sources.
 
 The added built-in feeds were checked on 2026-09-30 against the publishers' own feed and reuse pages. The original technology
-feeds and default selection are unchanged. GOV.UK explicitly offers its feeds to other applications and licenses
+feeds and active default selection are unchanged. GOV.UK explicitly offers its feeds to other applications and licenses
 most content under the OGL; sample articles in each selected category carry an OGL v3.0 footer. This app displays
-the required attribution in News settings and includes it in tool results. NSF describes its news RSS as
-headlines/summaries/links for standalone readers and permits reuse of most government-authored text; NSF's
-optional credit also appears in the app. Images, separately marked third-party works and content noted as
+the required attribution in tool results. NSF describes its news RSS as headlines/summaries/links for standalone
+readers and permits reuse of most government-authored text. Images, separately marked third-party works and content noted as
 exceptions are not licensed by these statements.
 The Digital Agency and MIC apply Japan's [Public Data License 1.0](https://www.digital.go.jp/resources/open_data/public_data_license_v1.0)
 to their published content unless marked otherwise. This permits commercial reuse with source attribution;
@@ -204,6 +206,7 @@ so they were likewise not bundled.
 | `PET_BUNDLED_PROXY` | unset | `1` (or the `--bundled-proxy` flag, as `npm run pet:bundled` does) runs the bundled `dist/server.mjs` on a free port, like the packaged app |
 | `TONARIN_USER_DATA` | the app's folder (above) | Another folder for settings, secrets and logs, for a second copy or a test run |
 | `TONARIN_SMOKE_TEST` | unset | A file path: the app checks itself, writes a report there and quits (used by `npm run smoke`) |
+| `TONARIN_ENABLE_MAIL_MOCK` | unset | `1` exposes the offline developer mail prototype; otherwise its page is absent and IPC operations are unavailable |
 | `TONARIN_GITHUB_CLIENT_ID` | from `package.json` | Try "Sign in with GitHub" with another OAuth App |
 | `TONARIN_GITHUB_REFRESH_BEFORE_MIN` | `15` | Renew GitHub tokens this many minutes early (`600` renews right away, for testing) |
 

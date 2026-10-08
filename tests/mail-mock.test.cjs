@@ -287,7 +287,7 @@ test("the demo path has no mail-provider, network, AI, or mail-mutation adapter"
   for (const source of [core, speech]) {
     assert.doesNotMatch(source, /https?:\/\/|fetch\s*\(|WebSocket|shell\.openExternal|request\s*\(|gmail\.com|googleapis\.com|graph\.microsoft\.com/);
   }
-  const route = main.split('ipcMain.handle("settings:mail-mock"')[1].split('ipcMain.handle("settings:add-news-feed"')[0];
+  const route = main.split('ipcMain.handle("settings:mail-mock"')[1].split('ipcMain.handle("settings:set-gemini-key"')[0];
   const screen = ui.split("function sectionMailMock()")[1].split("function sectionConnection()")[0];
   assert.ok(route && screen);
   assert.doesNotMatch(route, /proxyRequest|net\.fetch|shell\.openExternal|sendToPet|fetch\s*\(/);

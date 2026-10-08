@@ -32,6 +32,7 @@ const {
 } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
+const { findCopilotCliPath } = require("./copilot-cli.cjs");
 const { connect } = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
@@ -122,6 +123,7 @@ function readDotEnv() {
 }
 const dotEnv = readDotEnv();
 const env = (name, fallback = "") => process.env[name] ?? dotEnv[name] ?? fallback;
+const MAIL_MOCK_ENABLED = env("TONARIN_ENABLE_MAIL_MOCK") === "1";
 // Packaged apps run their own proxy, bundled into dist/server.mjs, inside Electron (utilityProcess): no Node.js or tsx
 // needed, and a free port per launch so it never meets a development proxy. `npm run pet:bundled` (--bundled-proxy,
 // or PET_BUNDLED_PROXY=1) tries that path in a development run. Development runs otherwise use port 8787 and
@@ -218,6 +220,7 @@ function freePort() {
 function startProxy() {
   fs.mkdirSync(logDir(), { recursive: true });
   const logFile = path.join(logDir(), "proxy.log");
+  const copilotCliPath = findCopilotCliPath();
   const childEnv = {
     ...process.env,
     // An app started from the Dock or Finder gets a short PATH; Windows keeps its own.
@@ -230,7 +233,9 @@ function startProxy() {
     REMINDERS_FILE: path.join(app.getPath("userData"), "reminders.json"),
     AUTOMATIONS_FILE: path.join(app.getPath("userData"), "automations.json"),
     USAGE_FILE: path.join(app.getPath("userData"), "usage.json"), // token counts per day, no content
+    ...(copilotCliPath ? { COPILOT_CLI_PATH: copilotCliPath } : {}),
   };
+  if (copilotCliPath) console.log(`[pet] Copilot SDK runtime: ${copilotCliPath}`);
   if (BUNDLED_PROXY) childEnv.TONARIN_PROXY_LOG_FILE = logFile;
   else delete childEnv.TONARIN_PROXY_LOG_FILE;
   if (env("DEBUG_REQUESTS")) childEnv.DEBUG_REQUESTS = env("DEBUG_REQUESTS"); // the bundled proxy does not read .env
@@ -453,29 +458,19 @@ async function probeProxyStatusOnce() {
 }
 
 let newsSync = Promise.resolve();
-let newsSyncError = null;
-let newsSyncCode = null;
 
 async function pushNewsSettings() {
-  const feeds = settings.values.feeds;
-  const customFeeds = settings.values.customFeeds;
   const language = speechLanguage();
   const result = await proxyRequest("PUT", "/news/settings", {
-    feeds,
-    customFeeds,
+    feeds: null,
+    customFeeds: [],
     speechLanguage: language,
   });
-  const expected = feeds ?? [
-    ...catalog.defaultFeeds[language],
-    ...customFeeds.filter((feed) => feed.language === language).map((feed) => feed.id),
-  ];
+  const expected = catalog.defaultFeeds[language];
   if (!result.ok || !Array.isArray(result.data?.enabled) || JSON.stringify(result.data.enabled) !== JSON.stringify(expected)) {
-    newsSyncError = result.ok ? "the proxy returned a different news selection" : result.message;
-    newsSyncCode = result.ok ? "config" : result.code ?? "network";
-    throw new Error(`Could not apply news settings: ${newsSyncError}`);
+    const reason = result.ok ? "the proxy returned a different news selection" : result.message;
+    throw new Error(`Could not apply default news sources: ${reason}`);
   }
-  newsSyncError = null;
-  newsSyncCode = null;
   return result.data;
 }
 
@@ -491,7 +486,7 @@ function queueNewsSync() {
 async function ensureProxy() {
   if (!BUNDLED_PROXY && (await portOpen(PORT))) {
     proxyRunning = true; // started outside the app (for example `npm start` while developing)
-    await queueNewsSync().then(() => true, () => false); // error is logged and shown in the news settings
+    await queueNewsSync().then(() => true, () => false);
     await probeProxyStatusOnce();
     void refreshProxyStatus();
     listenToProxyEvents();
@@ -538,11 +533,10 @@ function snapshot() {
     version: APP_VERSION,
     versions: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
     catalog,
-    newsSyncError,
-    newsSyncCode,
     codexPetsDir: CODEX_PETS_DIR.replace(os.homedir(), "~"),
     pet: petState, // muted / sleeping / connection: the settings window explains what is billed right now
     githubSignIn: Boolean(GITHUB_CLIENT_ID),
+    features: { mailMock: MAIL_MOCK_ENABLED },
     mailMock: mailMock.snapshot(),
   };
 }
@@ -1149,17 +1143,16 @@ ipcMain.handle("settings:set", async (event, patch) => {
   if (Object.hasOwn(patch, "mailMockEnabled") || Object.hasOwn(patch, "mailMockProvider")) {
     throw new Error("Mail demo settings require the dedicated mock controls");
   }
-  const { proxyKey: _ignored, customFeeds: _newsSites, ...allowed } = patch; // sites go through verified discovery instead
-  if (Object.hasOwn(allowed, "feeds") && !settings.isValid("feeds", allowed.feeds)) throw new Error("Invalid news source selection");
+  const { proxyKey: _ignored, customFeeds: _newsSites, feeds: _newsSelection, ...allowed } = patch;
   const changed = settings.update(allowed);
   if (changed.includes("voiceBackend")) await restartProxy();
-  if (changed.includes("feeds")) await newsSync;
-  else if (changed.some((key) => ["language", "speechLanguage"].includes(key))) await newsSync.then(() => true, () => false);
+  if (changed.some((key) => ["language", "speechLanguage"].includes(key))) await newsSync.then(() => true, () => false);
   return snapshot();
 });
 
 ipcMain.handle("settings:mail-mock", (event, input) => {
   if (!fromSettingsPage(event)) return { ok: false, code: "unauthorized" };
+  if (!MAIL_MOCK_ENABLED) return { ok: false, code: "unavailable" };
   try {
     let result = {};
     switch (input?.action) {
@@ -1182,57 +1175,6 @@ ipcMain.handle("settings:mail-mock", (event, input) => {
     if (error instanceof MailMockError) return { ok: false, code: error.code, snapshot: snapshot() };
     console.error("[mail mock] operation failed", error);
     return { ok: false, code: "internal" };
-  }
-});
-
-ipcMain.handle("settings:add-news-feed", async (event, input) => {
-  if (!fromOurPages(event)) return { ok: false, message: "Unauthorized settings page" };
-  if (settings.values.customFeeds.length >= 10) return { ok: false, code: "limit", message: "Up to 10 personal news sites can be added." };
-  const discovered = await proxyRequest("POST", "/news/discover", input, 18_000);
-  if (!discovered.ok) return discovered;
-  const feed = discovered.data?.feed;
-  if (!settings.isValid("customFeeds", [feed])) {
-    return { ok: false, code: "config", message: "The news proxy returned invalid feed details." };
-  }
-  const next = [...settings.values.customFeeds, feed];
-  if (!settings.isValid("customFeeds", next)) return { ok: false, code: "duplicate", message: "This feed is already added or has invalid details." };
-  const selected = settings.values.feeds;
-  if (selected && selected.length >= 30) {
-    return { ok: false, code: "selection", message: "Select fewer news sources before adding another site." };
-  }
-  settings.update({ customFeeds: next, ...(selected ? { feeds: [...selected, feed.id] } : {}) });
-  try {
-    await newsSync;
-    return { ok: true, feed, snapshot: snapshot() };
-  } catch (error) {
-    return { ok: false, saved: true, snapshot: snapshot(), message: error instanceof Error ? error.message : String(error) };
-  }
-});
-
-ipcMain.handle("settings:remove-news-feed", async (event, id) => {
-  if (!fromOurPages(event)) return { ok: false, message: "Unauthorized settings page" };
-  if (typeof id !== "string" || !settings.values.customFeeds.some((feed) => feed.id === id)) {
-    return { ok: false, message: "This news site is no longer saved." };
-  }
-  settings.update({
-    customFeeds: settings.values.customFeeds.filter((feed) => feed.id !== id),
-    feeds: settings.values.feeds?.filter((feedId) => feedId !== id) ?? null,
-  });
-  try {
-    await newsSync;
-    return { ok: true, snapshot: snapshot() };
-  } catch (error) {
-    return { ok: false, saved: true, snapshot: snapshot(), message: error instanceof Error ? error.message : String(error) };
-  }
-});
-
-ipcMain.handle("settings:sync-news-feeds", async (event) => {
-  if (!fromOurPages(event)) return { ok: false, message: "Unauthorized settings page" };
-  try {
-    await queueNewsSync();
-    return { ok: true, snapshot: snapshot() };
-  } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : String(error), snapshot: snapshot() };
   }
 });
 
@@ -1454,40 +1396,18 @@ async function runSmokeTest() {
   }
   if (settingsWin && !settingsWin.isDestroyed() && report.settings?.sections) {
     try {
-      report.news = await settingsWin.webContents.executeJavaScript(`(async () => {
-        document.querySelector('[data-section="news"]').click();
-        const page = document.getElementById("section-news");
-        const sourceSwitches = page.querySelectorAll('input[role="switch"]').length;
-        const emptyScience = page.querySelector('[data-news-empty-category="science"] .desc')?.textContent;
-        const url = page.querySelector('input.news-url');
-        const fields = page.querySelectorAll(".news-add-controls select").length;
-        await window.pet.settings.set({ feeds: [] });
-        // The settings:set reply can arrive before the separate settings:changed render.
-        let emptyVisible = false;
-        for (let attempt = 0; attempt < 60; attempt++) {
-          const empty = page.querySelector(".news-empty");
-          if (empty && !empty.hidden) {
-            emptyVisible = true;
-            break;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 50));
-        }
-        url.value = "http://127.0.0.1/rss";
-        page.querySelector(".news-add-controls button").click();
-        const invalidUrlVisible = !!page.querySelector(".message.error")?.textContent;
-        await window.pet.settings.set({ feeds: null });
-        return { visible: !page.hidden, sourceSwitches, emptyScience, fields, emptyVisible, invalidUrlVisible };
-      })()`);
-      if (!report.news.visible || report.news.sourceSwitches < 17 || report.news.fields !== 2 ||
-          !["候補なし", "No sources available"].includes(report.news.emptyScience) ||
-          !report.news.emptyVisible || !report.news.invalidUrlVisible) {
-        smokeProblems.push("the news settings could not show source choices, empty categories, an empty state and URL validation");
+      report.hiddenSettings = await settingsWin.webContents.executeJavaScript(`({
+        news: !!document.querySelector('[data-section="news"], #section-news'),
+        mailMock: !!document.querySelector('[data-section="mailMock"], #section-mailMock'),
+      })`);
+      if (report.hiddenSettings.news || report.hiddenSettings.mailMock !== MAIL_MOCK_ENABLED) {
+        smokeProblems.push("retired or gated settings sections have the wrong visibility");
       }
     } catch (error) {
-      smokeProblems.push(`news settings test failed: ${error instanceof Error ? error.message : String(error)}`);
+      smokeProblems.push(`settings visibility test failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  if (settingsWin && !settingsWin.isDestroyed() && report.settings?.sections) {
+  if (MAIL_MOCK_ENABLED && settingsWin && !settingsWin.isDestroyed() && report.settings?.sections) {
     try {
       report.mailMock = await settingsWin.webContents.executeJavaScript(`(async () => {
         document.querySelector('[data-section="mailMock"]').click();
@@ -1623,7 +1543,7 @@ app.whenReady().then(async () => {
     }
     if (keys.includes("launchAtLogin") && app.isPackaged) app.setLoginItemSettings({ openAtLogin: settings.values.launchAtLogin });
     if (keys.some((key) => key === "mcpServers" || key.startsWith("secret:mcp:"))) schedulePushMcp();
-    if (keys.some((key) => ["feeds", "customFeeds", "language", "speechLanguage"].includes(key))) void queueNewsSync();
+    if (keys.some((key) => ["language", "speechLanguage"].includes(key))) void queueNewsSync();
     else broadcastSettings();
   });
 

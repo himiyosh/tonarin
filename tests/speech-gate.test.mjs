@@ -61,7 +61,10 @@ function run(samples, filter, { silenceMs = 700, petSpeaking = false } = {}) {
   levels(samples).forEach(({ level, low }, i) => {
     const r = gate.push({ pcm: i, level, low, now: i * 40, filter, silenceMs, petSpeaking });
     if (r.send.length && !opens.some((e) => e.closed === undefined)) opens.push({ at: i * 40, preroll: r.send.length });
-    if (r.ended) opens.at(-1).closed = i * 40;
+    if (r.ended) {
+      opens.at(-1).closed = i * 40;
+      opens.at(-1).utterance = r.utterance;
+    }
     sent += r.send.length;
   });
   return { opens, sentMs: sent * 40 };
@@ -106,6 +109,13 @@ test("standard: a faint echo of the pet does not open, talking over it does (bar
   assert.equal(echo.opens.length, 0);
   const bargeIn = run(mix(noise(seconds(2), 0.003), voice(seconds(1), 0.08), noise(seconds(1), 0.003)), "standard", { petSpeaking: true });
   assert.equal(bargeIn.opens.length, 1);
+});
+test("utterance evidence distinguishes sustained speech without raising the soft-speech threshold", () => {
+  const soft = run(mix(noise(seconds(2), 0.003), voice(seconds(1.5), 0.025), noise(seconds(2), 0.003)), "standard");
+  assert.equal(soft.opens.length, 1);
+  assert.ok(soft.opens[0].utterance.durationMs >= 1500);
+  assert.ok(soft.opens[0].utterance.voicedMs >= 320);
+  assert.ok(soft.opens[0].utterance.voiceRatio > 0.1);
 });
 test("reset() forgets the room and an open gate", () => {
   const gate = createSpeechGate();

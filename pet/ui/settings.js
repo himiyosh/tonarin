@@ -12,14 +12,14 @@ const api = window.pet.settings;
 const nav = document.getElementById("nav");
 const content = document.getElementById("content");
 
-const SECTIONS = ["general", "character", "voice", "automations", "mcp", "news", "mailMock", "connection", "usage", "about"];
+const CORE_SECTIONS = ["general", "character", "voice", "automations", "mcp", "connection", "usage", "about"];
+const ALL_SECTIONS = [...CORE_SECTIONS.slice(0, 5), "mailMock", ...CORE_SECTIONS.slice(5)];
 const ICONS = {
   general: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M4.2 7.5l2.1 1.2M17.7 15.3l2.1 1.2M4.2 16.5l2.1-1.2M17.7 8.7l2.1-1.2"/><circle cx="12" cy="12" r="7.2"/></svg>',
   character: '<svg viewBox="0 0 24 24"><path d="M12 5c5 0 8 3.6 8 8.2S16.6 20 12 20s-8-2.2-8-6.8S7 5 12 5z"/><path d="M12 5c0-1.6.8-2.6 2.2-3"/><circle cx="9.3" cy="12.5" r=".9"/><circle cx="14.7" cy="12.5" r=".9"/></svg>',
   voice: '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>',
   automations: '<svg viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.6 2.2M9.5 2.8h5M19 5.5l1.5 1.5"/></svg>',
   mcp: '<svg viewBox="0 0 24 24"><path d="M9 2.8v4.4M15 2.8v4.4M6.5 7.2h11v3.3a5.5 5.5 0 0 1-11 0z"/><path d="M12 16v5.2"/></svg>',
-  news: '<svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="14" height="15" rx="2"/><path d="M17.5 8.5h2a1 1 0 0 1 1 1v8a2 2 0 0 1-2 2M7 9h7M7 12.5h7M7 16h4"/></svg>',
   mailMock: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6M8 16h8"/></svg>',
   connection: '<svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l8-8M16 7l2 2M14 9l2 2"/></svg>',
   usage: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M14.6 9.3c-.5-.9-1.5-1.4-2.6-1.4-1.5 0-2.6.8-2.6 1.9 0 1.2 1.1 1.7 2.6 2s2.6.8 2.6 2-1.1 2-2.6 2c-1.2 0-2.2-.6-2.7-1.5M12 6.1v1.8M12 16.1v1.8"/></svg>',
@@ -33,41 +33,20 @@ const BILLING_ICONS = {
   scheduled: ICONS.automations,
   quit: '<svg viewBox="0 0 24 24"><path d="M12 2.5v9M6 6.7a8 8 0 1 0 12 0"/></svg>',
   copilot: '<svg viewBox="0 0 24 24"><path d="m12 2 2.6 7.4L22 12l-7.4 2.6L12 22l-2.6-7.4L2 12l7.4-2.6z"/></svg>',
-  data: ICONS.news,
+  data: '<svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="14" height="15" rx="2"/><path d="M17.5 8.5h2a1 1 0 0 1 1 1v8a2 2 0 0 1-2 2M7 9h7M7 12.5h7M7 16h4"/></svg>',
 };
 const OSS = ["Electron", "ws", "@github/copilot-sdk", "@modelcontextprotocol/client", "@mozilla/readability", "linkedom", "robots-parser", "rss-parser", "zod", "tsx", "TypeScript"];
 
 let snap;
-let current = SECTIONS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "general";
+let current = ALL_SECTIONS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "general";
 let syncers = []; // functions that refresh controls from the latest snapshot without rebuilding them
 let cancelMailMockSpeech = () => {};
 let codexPets = [];
 const svgCache = new Map();
-const NEWS_CATEGORIES = ["general", "business", "science", "lifestyle", "technology"];
-const MAX_CUSTOM_FEEDS = 10;
-const NEWS_ERRORS = new Set(["url", "address", "dns", "network", "timeout", "http", "size", "redirect", "encoding", "feed", "config", "rights", "duplicate", "limit", "selection"]);
 const MAIL_MOCK_ERRORS = new Set(["invalid", "off", "already-connected", "pending", "no-pending", "expired",
   "state-mismatch", "pkce-mismatch", "code-invalid", "storage", "storage-unavailable", "token-expired",
   "invalid-response", "not-connected", "exhausted", "body-opt-in", "invalid-message", "body-not-viewed",
   "ai-confirmation", "unauthorized", "internal"]);
-const NEWS_CREDIT_LINKS = {
-  "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/": "news-ogl",
-  "https://www.nsf.gov/policies/digital": "news-nsf",
-  "https://www.digital.go.jp/copyright-policy": "news-digital-policy",
-  "https://www.soumu.go.jp/menu_kyotsuu/policy/tyosaku.html": "news-soumu-policy",
-  "https://www.pref.osaka.lg.jp/o070050/koho/information/use.html": "news-osaka-policy",
-};
-let newsFeedback;
-let newsMessage;
-
-function newsSay(key, type = "ok", vars = {}) {
-  newsFeedback = { key, type, vars };
-  if (newsMessage) {
-    newsMessage.className = `message ${type}`;
-    newsMessage.textContent = t(key, vars);
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Small DOM helpers (textContent only: nothing from settings is parsed as HTML)
 // ---------------------------------------------------------------------------
@@ -352,258 +331,6 @@ function sectionVoice() {
     ),
     el("h2", { text: "GitHub Copilot" }),
     el("div", { class: "group" }, row(t("voice.copilot"), t("voice.copilotDesc"), toggle("useCopilot"))),
-  ];
-}
-
-function sectionNews() {
-  const allFeeds = () => [...snap.catalog.feeds, ...snap.values.customFeeds];
-  const enabled = () => snap.values.feeds ?? [
-    ...snap.catalog.defaultFeeds[snap.speechLanguage],
-    ...snap.values.customFeeds.filter((feed) => feed.language === snap.speechLanguage).map((feed) => feed.id),
-  ];
-  const inputs = [];
-  const unavailable = new Set();
-  let saving = false;
-  const updateSelection = async (next) => {
-    if (saving) return;
-    if (next !== null && next.length > 30) {
-      newsSay("news.error.selection", "error");
-      for (const fn of syncers) fn();
-      return;
-    }
-    saving = true;
-    for (const input of inputs) input.disabled = true;
-    try {
-      onSnapshot(await api.set({ feeds: next }));
-      newsSay("news.updated");
-    } catch {
-      newsSay("news.changeFailed", "error");
-      onSnapshot(await api.get());
-    } finally {
-      saving = false;
-      for (const input of inputs) input.disabled = unavailable.has(input);
-      for (const fn of syncers) fn();
-    }
-  };
-  const selection = (ids, checked) => {
-    const chosen = new Set(enabled());
-    for (const id of ids) checked ? chosen.add(id) : chosen.delete(id);
-    return allFeeds().map((feed) => feed.id).filter((id) => chosen.has(id));
-  };
-  const feedRow = (feed) => {
-    const input = el("input", {
-      type: "checkbox",
-      role: "switch",
-      "aria-label": t("news.toggle", { name: feed.name }),
-      onchange: () => void updateSelection(selection([feed.id], input.checked)),
-    });
-    inputs.push(input);
-    sync(() => (input.checked = enabled().includes(feed.id)));
-    const details = [
-      t(`news.category.${feed.category}`),
-      "siteHost" in feed ? t("news.siteHost", { host: feed.siteHost }) : feed.hosts.join(", "),
-      ...(!("siteHost" in feed) && feed.articleAccess === "feed-only" ? [t("news.feedOnly")] : []),
-      ...("siteHost" in feed && new URL(feed.url).hostname !== feed.siteHost
-        ? [t("news.feedHost", { host: new URL(feed.url).hostname })] : []),
-    ].join(" · ");
-    const controls = [el("label", { class: "switch" }, input, el("span", { class: "track" }))];
-    if ("siteHost" in feed) {
-      controls.push(el("button", {
-        class: "btn small danger",
-        type: "button",
-        text: t("news.remove"),
-        "aria-label": `${t("news.remove")} ${feed.name}`,
-        onclick: async (event) => {
-          if (!window.confirm(t("news.removeConfirm", { name: feed.name }))) return;
-          const button = event.currentTarget;
-          const restoreFocus = document.activeElement === button;
-          button.disabled = true;
-          try {
-            const result = await api.news.remove(feed.id);
-            if (result.ok) newsFeedback = { key: "news.removed", type: "ok", vars: { name: feed.name } };
-            if (result.snapshot) onSnapshot(result.snapshot);
-            if (!result.ok) newsSay(result.saved ? "news.applyFailed" : "news.changeFailed", "error");
-            else if (restoreFocus && current === "news") document.getElementById("news-custom-heading")?.focus({ preventScroll: true });
-          } catch {
-            newsSay("news.changeFailed", "error");
-          } finally {
-            button.disabled = false;
-          }
-        },
-      }));
-    }
-    return row(feed.name, details, ...controls);
-  };
-  const categoryRow = (category) => {
-    const feeds = allFeeds().filter((feed) => feed.category === category);
-    const count = el("div", { class: "desc" });
-    const input = el("input", {
-      type: "checkbox",
-      role: "switch",
-      disabled: feeds.length === 0,
-      "aria-label": t(`news.category.${category}`),
-      onchange: () => void updateSelection(selection(feeds.map((feed) => feed.id), input.checked)),
-    });
-    if (!feeds.length) unavailable.add(input);
-    inputs.push(input);
-    sync(() => {
-      const selected = feeds.filter((feed) => enabled().includes(feed.id)).length;
-      input.checked = feeds.length > 0 && selected === feeds.length;
-      input.indeterminate = selected > 0 && selected < feeds.length;
-      count.textContent = t("news.categoryCount", { selected, total: feeds.length });
-    });
-    return el("div", { class: "row" },
-      el("div", { class: "label" }, el("div", { class: "title", text: t(`news.category.${category}`) }), count),
-      el("div", { class: "control" }, el("label", { class: "switch" }, input, el("span", { class: "track" }))),
-    );
-  };
-  const builtInRows = (language) => {
-    const feeds = snap.catalog.feeds.filter((feed) => feed.language === language);
-    return [
-      ...feeds.map(feedRow),
-      ...NEWS_CATEGORIES.filter((category) => !feeds.some((feed) => feed.category === category)).map((category) => {
-        const emptyRow = row(t(`news.category.${category}`), t("news.noCandidates"));
-        emptyRow.dataset.newsEmptyCategory = category;
-        return emptyRow;
-      }),
-    ];
-  };
-  const scopeNote = el("div", { class: "notice info news-scope" });
-  sync(() => {
-    const chosen = new Set(enabled());
-    scopeNote.textContent = t("news.watching", {
-      builtIn: snap.catalog.feeds.filter((feed) => chosen.has(feed.id)).length,
-      custom: snap.values.customFeeds.filter((feed) => chosen.has(feed.id)).length,
-    });
-  });
-  const defaultsNote = el("div", { class: "notice info", text: t("news.usingDefaults") });
-  sync(() => (defaultsNote.hidden = snap.values.feeds !== null));
-  const empty = el("div", { class: "notice warn news-empty", text: t("news.empty") });
-  sync(() => (empty.hidden = enabled().length !== 0));
-  const syncNotice = el("div", { class: "notice warn" });
-  const syncReason = el("div");
-  const retry = el("button", {
-    class: "btn small",
-    type: "button",
-    text: t("news.retry"),
-    onclick: async () => {
-      retry.disabled = true;
-      retry.textContent = t("news.retrying");
-      try {
-        const result = await api.news.sync();
-        if (result.snapshot) onSnapshot(result.snapshot);
-        newsSay(result.ok ? "news.synced" : "news.applyFailed", result.ok ? "ok" : "error");
-      } catch {
-        newsSay("news.applyFailed", "error");
-      } finally {
-        retry.disabled = false;
-        retry.textContent = t("news.retry");
-      }
-    },
-  });
-  syncNotice.append(el("div", { text: t("news.applyFailed") }), syncReason, retry);
-  sync(() => {
-    syncNotice.hidden = !snap.newsSyncError;
-    syncReason.textContent = NEWS_ERRORS.has(snap.newsSyncCode) ? t(`news.error.${snap.newsSyncCode}`) : "";
-  });
-  newsMessage = el("div", { class: "message", role: "status", "aria-live": "polite" });
-  sync(() => {
-    if (newsFeedback) newsSay(newsFeedback.key, newsFeedback.type, newsFeedback.vars);
-  });
-  const capacityNote = el("p", { class: "lead small news-capacity" });
-  sync(() => {
-    const count = snap.values.customFeeds.length;
-    capacityNote.textContent = t("news.capacity", { count, max: MAX_CUSTOM_FEEDS, remaining: MAX_CUSTOM_FEEDS - count });
-  });
-  const url = el("input", {
-    type: "url", class: "news-url", maxlength: "2048", required: true, spellcheck: false, autocomplete: "url",
-    placeholder: t("news.sitePlaceholder"), "aria-label": t("news.siteUrl"),
-  });
-  const language = el("select", { "aria-label": t("news.siteLanguage") },
-    ["ja", "en"].map((id) => el("option", { value: id, text: t(`lang.${id}`) })));
-  language.value = snap.speechLanguage;
-  const category = el("select", { "aria-label": t("news.siteCategory") },
-    NEWS_CATEGORIES.map((id) => el("option", { value: id, text: t(`news.category.${id}`) })));
-  let adding = false;
-  const addButton = el("button", {
-    class: "btn primary", type: "button", text: t("news.add"),
-    onclick: async () => {
-      if (adding) return;
-      if (snap.values.customFeeds.length >= MAX_CUSTOM_FEEDS) {
-        newsSay("news.error.limit", "error");
-        return;
-      }
-      if (!/^https:\/\//i.test(url.value.trim()) || !url.checkValidity()) {
-        newsSay("news.error.url", "error");
-        url.focus();
-        return;
-      }
-      const restoreFocus = document.activeElement === addButton || document.activeElement === url;
-      adding = true;
-      addButton.disabled = true;
-      addButton.textContent = t("news.adding");
-      try {
-        const result = await api.news.add({ url: url.value.trim(), language: language.value, category: category.value });
-        if (result.ok) newsFeedback = { key: "news.added", type: "ok", vars: { name: result.feed.name } };
-        if (result.snapshot) onSnapshot(result.snapshot);
-        if (result.ok && result.snapshot && restoreFocus && current === "news") {
-          const nextUrl = document.querySelector("#section-news .news-url");
-          nextUrl.value = "";
-          nextUrl.focus();
-        }
-        if (!result.ok) {
-          const key = NEWS_ERRORS.has(result.code) ? `news.error.${result.code}` : "news.addFailed";
-          newsSay(result.saved ? "news.applyFailed" : key, "error", { message: result.message ?? "" });
-        }
-      } catch (error) {
-        newsSay("news.addFailed", "error", { message: error instanceof Error ? error.message : String(error) });
-      } finally {
-        adding = false;
-        addButton.disabled = snap.values.customFeeds.length >= MAX_CUSTOM_FEEDS;
-        addButton.textContent = t("news.add");
-      }
-    },
-  });
-  sync(() => (addButton.disabled = adding || snap.values.customFeeds.length >= MAX_CUSTOM_FEEDS));
-  const credits = [...new Map(snap.catalog.feeds.filter((feed) => feed.attribution)
-    .map((feed) => [feed.attribution.url, feed.attribution])).values()];
-  return [
-    el("h1", { text: t("news.title") }),
-    el("p", { class: "lead", text: t("news.desc") }),
-    scopeNote,
-    defaultsNote,
-    syncNotice,
-    empty,
-    el("h2", { text: t("news.addTitle") }),
-    el("p", { class: "lead small", text: t("news.addDesc") }),
-    capacityNote,
-    el("div", { class: "group" },
-      el("div", { class: "row stack" },
-        el("label", { class: "title", text: t("news.siteUrl") }, url),
-        el("div", { class: "news-add-controls" }, language, category, addButton),
-        newsMessage,
-      )),
-    el("p", { class: "lead small news-host-note", text: t("news.hostLimit") }),
-    el("h2", { text: t("news.categories") }),
-    el("p", { class: "lead small", text: t("news.categoryDesc") }),
-    el("div", { class: "group" }, NEWS_CATEGORIES.map(categoryRow)),
-    el("h2", { id: "news-custom-heading", tabindex: "-1", text: t("news.custom") }),
-    el("div", { class: "group" },
-      snap.values.customFeeds.length ? snap.values.customFeeds.map(feedRow) : el("div", { class: "empty", text: t("news.customEmpty") })),
-    el("h2", { text: t("news.ja") }),
-    el("div", { class: "group" }, builtInRows("ja")),
-    el("h2", { text: t("news.en") }),
-    el("div", { class: "group" }, builtInRows("en")),
-    ...(credits.length ? [
-      el("h2", { text: t("news.credits") }),
-      el("div", { class: "group" }, credits.map((credit) =>
-        row(credit.text, null,
-          NEWS_CREDIT_LINKS[credit.url]
-            ? el("button", { class: "link", type: "button", text: t("news.policy"), onclick: () => api.open(NEWS_CREDIT_LINKS[credit.url]) })
-            : null),
-      )),
-    ] : []),
-    el("div", { class: "actions spaced" }, el("button", { class: "btn", type: "button", text: t("news.reset"), onclick: () => void updateSelection(null) })),
   ];
 }
 
@@ -2128,7 +1855,6 @@ const BUILDERS = {
   voice: sectionVoice,
   automations: sectionAutomations,
   mcp: sectionMcp,
-  news: sectionNews,
   mailMock: sectionMailMock,
   connection: sectionConnection,
   usage: sectionUsage,
@@ -2141,12 +1867,14 @@ const BUILDERS = {
 function renderAll() {
   cancelMailMockSpeech();
   syncers = [];
+  const sections = snap.features?.mailMock ? ALL_SECTIONS : CORE_SECTIONS;
+  if (!sections.includes(current)) current = "general";
   setLanguage(snap.uiLanguage);
   document.title = t("settings.title");
   applyI18n();
   document.querySelector(".brand strong").textContent = snap.appName;
   nav.replaceChildren(
-    ...SECTIONS.map((id) => {
+    ...sections.map((id) => {
       const button = el("button", { class: "nav-item", type: "button", "data-section": id, onclick: () => go(id) });
       button.innerHTML = ICONS[id]; // static icons defined above
       button.append(el("span", { text: t(`nav.${id}`) }));
@@ -2158,13 +1886,14 @@ function renderAll() {
       return button;
     }),
   );
-  content.replaceChildren(...SECTIONS.map((id) => el("section", { class: "section", id: `section-${id}` }, ...BUILDERS[id]())));
+  content.replaceChildren(...sections.map((id) => el("section", { class: "section", id: `section-${id}` }, ...BUILDERS[id]())));
   go(current, { keepScroll: true });
 }
 
 function go(id, { keepScroll = false } = {}) {
   if (current === "mailMock" && id !== "mailMock") cancelMailMockSpeech();
-  current = SECTIONS.includes(id) ? id : "general";
+  const sections = snap?.features?.mailMock ? ALL_SECTIONS : CORE_SECTIONS;
+  current = sections.includes(id) ? id : "general";
   history.replaceState(null, "", `#${current}`);
   for (const section of content.querySelectorAll(".section")) section.hidden = section.id !== `section-${current}`;
   for (const button of nav.querySelectorAll(".nav-item")) {
@@ -2178,9 +1907,9 @@ function go(id, { keepScroll = false } = {}) {
 function onSnapshot(next) {
   if (!next) return;
   const languageChanged = !snap || snap.uiLanguage !== next.uiLanguage;
-  const sourcesChanged = !snap || JSON.stringify(snap.values.customFeeds) !== JSON.stringify(next.values.customFeeds);
+  const sectionsChanged = !snap || Boolean(snap.features?.mailMock) !== Boolean(next.features?.mailMock);
   snap = next;
-  if (languageChanged || sourcesChanged) {
+  if (languageChanged || sectionsChanged) {
     const scroll = content.scrollTop;
     renderAll();
     content.scrollTop = scroll;

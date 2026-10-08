@@ -282,7 +282,7 @@ class PetConnection implements LiveSession {
   }
 
   private status(state: PetState, message?: string): void {
-    this.sendPet({ type: "status", state, ...(message ? { message } : {}) });
+    this.sendPet({ type: "status", state, backend: "gemini", ...(message ? { message } : {}) });
   }
 
   private sendUp(message: unknown): void {

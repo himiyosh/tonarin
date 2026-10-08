@@ -28,7 +28,7 @@ import { getAuthStatusWithRecovery, withTimeout } from "./copilot-startup.js";
 import { attachCopilotLive, selectVoiceBackend, type CopilotVoiceConversation } from "./copilot-live.js";
 import { attachLive, type Announcement, type GeminiSchema, type LiveSession, type LiveTool, type NoiseFilter, type SessionOptions } from "./live.js";
 import {
-  CATALOG, FEEDS, NEWS_CATEGORIES, asUntrustedNewsData, checkKeywordSources, configureNewsSources, discoverNewsFeed, enabledFeedIds,
+  CATALOG, FEEDS, asUntrustedNewsData, checkKeywordSources, configureNewsSources, enabledFeedIds,
   fetchArticle, fetchHeadlines, headlineFailure, keywordFeedIds, newsToolsFor, type Language,
 } from "./news.js";
 import { NewsFetchError } from "./news-network.js";
@@ -818,21 +818,10 @@ async function readJson(req: IncomingMessage, limitBytes = 1024 * 1024): Promise
 }
 
 // ---------------------------------------------------------------------------
-// News source discovery and settings (called by the trusted settings window via Electron's main process)
+// News defaults (synchronized by Electron's main process)
 // ---------------------------------------------------------------------------
-const newsDiscoverySchema = z.object({
-  url: z.string().min(1).max(2048),
-  language: z.enum(["ja", "en"]),
-  category: z.enum(NEWS_CATEGORIES),
-}).strict();
-
 async function newsApi(req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
   try {
-    if (req.method === "POST" && path === "/news/discover") {
-      const input = newsDiscoverySchema.parse(await readJson(req, 4096));
-      sendJson(res, 200, { feed: await discoverNewsFeed(input.url, input.language, input.category) });
-      return;
-    }
     if (req.method === "PUT" && path === "/news/settings") {
       sendJson(res, 200, configureNewsSources(await readJson(req, 64 * 1024)));
       return;
@@ -977,7 +966,7 @@ const server = http.createServer(async (req, res) => {
       });
       return;
     }
-    if (path === "/news/discover" || path === "/news/settings") {
+    if (path === "/news/settings") {
       await newsApi(req, res, path);
       return;
     }
