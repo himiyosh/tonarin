@@ -11,7 +11,7 @@ Everything is in one folder: `~/Library/Application Support/Tonarin/` on a Mac, 
 | File | Contents |
 |---|---|
 | `settings.json` | Settings (no secrets) |
-| `secrets.json` | Gemini key, MCP tokens and the GitHub sign-in, encrypted with Electron `safeStorage`: the keychain item "Tonarin Safe Storage" on a Mac, DPAPI for your account on Windows |
+| `secrets.json` | Optional legacy Gemini key, MCP tokens and the GitHub sign-in, encrypted with Electron `safeStorage`: the keychain item "Tonarin Safe Storage" on a Mac, DPAPI for your account on Windows |
 | `automations.json` | Automations and their history |
 | `reminders.json` | Pending reminders |
 | `usage.json` | Daily token counts (numbers only) |
@@ -63,10 +63,41 @@ its settings window is the source of truth there.
 | `LLM_BASE_URL` / `LLM_MODEL` | unset | Bring your own OpenAI-compatible model instead of Copilot (for offline tests) |
 | `DEBUG_REQUESTS` | unset | `1` logs request shapes, event types, tool timings and token counts, never content |
 
-### Realtime voice (Gemini Live)
+### Realtime voice
+
+The preferred path is local speech recognition:
+
+```text
+microphone -> speech gate -> whisper.cpp on 127.0.0.1 -> final text -> GitHub Copilot -> installed OS voice
+```
+
+Audio remains on the computer. Tonarin sends only the final transcript and conversation context to GitHub Copilot.
+Replies are spoken with an installed local Web Speech voice whose language matches the conversation. If no matching
+local voice is installed, Tonarin reports the problem instead of using a cloud speech service.
+
+Install `whisper-server` from whisper.cpp and place
+`ggml-large-v3-turbo-q5_0.bin` in `models/` under Tonarin's data folder
+(`~/Library/Application Support/Tonarin/models/` on macOS,
+`%APPDATA%\Tonarin\models\` on Windows). A development proxy instead defaults to the repository's `models/`
+folder. `WHISPER_MODEL` can select another local model path. The executable must be on `PATH`; Windows also accepts
+`whisper-server.exe`. The model and native runtime are deliberately not bundled yet because their release size,
+CPU/accelerator behavior, signing and Japanese latency still need platform validation.
+
+NVIDIA Nemotron is not bundled by this implementation. Its public model supports Japanese streaming recognition,
+but a distributable macOS/Windows native runtime and conversion/quantization path have not been validated. The voice
+bridge keeps ASR behind a local adapter so it can be evaluated later without changing the renderer protocol.
+
+In automatic mode, an existing Gemini key keeps the previous Gemini Live path working for compatibility; without
+that key, Tonarin starts the local path when whisper.cpp is ready. The local path has no Gemini SDK, API, model or
+key dependency.
+In **Settings → Connection**, **Auto** preserves an existing Gemini setup and otherwise chooses local recognition;
+**Local** explicitly prevents audio from being sent to Gemini; **Gemini Live** explicitly keeps the legacy path.
+
+#### Legacy Gemini Live
 
 | Variable | Default | Description |
 |---|---|---|
+| `VOICE_BACKEND` | `auto` | `auto`, `local` or `gemini`. The packaged app uses the matching Connection setting. |
 | `GEMINI_API_KEY` | unset | Enables `/v1/live`. A key saved in the settings window wins |
 | `GEMINI_LIVE_MODEL` | `gemini-3.8-live` | Live model |
 | `GEMINI_VOICE` | `Aoede` | Default voice (30 voices; the settings window lists them) |
@@ -176,12 +207,12 @@ so they were likewise not bundled.
 | `TONARIN_GITHUB_CLIENT_ID` | from `package.json` | Try "Sign in with GitHub" with another OAuth App |
 | `TONARIN_GITHUB_REFRESH_BEFORE_MIN` | `15` | Renew GitHub tokens this many minutes early (`600` renews right away, for testing) |
 
-### Speech services for the OpenAI-compatible endpoint
+### Speech services for the OpenAI-compatible endpoint and local pet
 
 | Variable | Default | Description |
 |---|---|---|
 | `TTS_VOICE` / `TTS_RATE` | `Kyoko` / `200` | macOS `say` voice and rate for `/v1/audio/speech` (macOS only) |
-| `WHISPER` | unset | `off` skips whisper.cpp (the pet always sets this) |
+| `WHISPER` | unset | `off` skips whisper.cpp. When available, the desktop pet prefers this local path over Gemini Live. |
 | `WHISPER_MODEL` | `models/ggml-large-v3-turbo-q5_0.bin` | whisper.cpp model for `/v1/audio/transcriptions` |
 | `WHISPER_LANGUAGE` / `WHISPER_PROMPT` | `ja` / tech vocabulary | Recognition language and hint |
 

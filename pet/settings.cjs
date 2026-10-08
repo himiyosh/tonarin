@@ -53,6 +53,7 @@ const DEFAULTS = {
   persona: "",
   silenceMs: 700,
   noiseFilter: "standard", // light | standard | strong: how much the pet ignores room noise (speech-gate.js)
+  voiceBackend: "auto", // auto | local | gemini
   useCopilot: true,
   mode: "companion", // companion | english (conversation practice) | focus (quiet, short answers)
   mcpServers: [], // MCP connections without their secrets (those are in the keychain as "mcp:<id>")
@@ -78,6 +79,7 @@ const VALID = {
   persona: (v) => typeof v === "string" && v.length <= 2000,
   silenceMs: (v) => Number.isInteger(v) && v >= 300 && v <= 2000,
   noiseFilter: (v) => v === "light" || v === "standard" || v === "strong",
+  voiceBackend: (v) => v === "auto" || v === "local" || v === "gemini",
   useCopilot: isBool,
   mode: (v) => ["companion", "english", "focus"].includes(v),
   mcpServers: (v) => Array.isArray(v) && v.length <= 20 && v.every(isMcpServer),
