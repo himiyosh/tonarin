@@ -3,7 +3,7 @@
   "productName": "Tonarin",
   "version": "0.2.0",
   "private": true,
-  "description": "A voice desk companion for macOS and Windows: talk in real time with Gemini Live, with GitHub Copilot as the brain for deep dives",
+  "description": "A voice desk companion for Apple Silicon Macs and Windows 10/11 x64/ARM64 (preview): real-time Gemini Live with GitHub Copilot for deep dives",
   "license": "MIT",
   "author": "himiyosh",
   "homepage": "https://github.com/himiyosh/tonarin#readme",
