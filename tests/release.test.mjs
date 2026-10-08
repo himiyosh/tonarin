@@ -50,6 +50,8 @@ test("release notes: hand-written notes, Japanese folded in, downloads, contribu
   );
   assert.match(body, /\| Windows 10 \/ 11 \(x64\), preview \| \[Tonarin-0\.3\.0-win-x64-setup\.exe\]/);
   assert.match(body, /SHA-256 checksums: \[SHA256SUMS\.txt\]/);
+  assert.match(body, /explains the first launch, including how to proceed if macOS or Windows warns about the app/);
+  assert.doesNotMatch(body, /builds are not signed yet/);
   assert.match(body, /\*\*Full Changelog\*\*: https:\/\/github\.com\/himiyosh\/tonarin\/compare\/v0\.2\.0\.\.\.v0\.3\.0\n$/);
   assert.doesNotMatch(body, /What's Changed/, "only New Contributors is taken from the generated notes");
   assert.doesNotMatch(body, /blockmap/);
@@ -94,6 +96,7 @@ test("site data: published releases newest first, drafts left out, latest is not
       ["Tonarin-0.2.0-win-arm64-setup.exe", "win", "arm64", "installer"],
     ],
   );
+  assert.ok(latest.downloads.filter((d) => d.os === "win").every((d) => d.preview), "both Windows installers are previews");
   assert.equal(latest.downloads[0].sha256, "c1e5c13964ee7845e026de63fa9752d03fd611082ed958c394240d48809ec697");
   assert.ok(latest.downloads.every((d) => /^[0-9a-f]{64}$/.test(d.sha256)), "every file has its checksum");
   assert.equal(latest.checksums, "https://github.com/himiyosh/tonarin/releases/download/v0.2.0/SHA256SUMS.txt");
@@ -125,4 +128,40 @@ test("site fine print distinguishes Mac and Windows signing in both languages", 
   assert.match(page, /<section class="first-run" id="first-launch"/);
   assert.match(page, /Apple の公証も Windows のコード署名もないため、最初の一度だけ確認が出ます/);
   assert.match(page, /not notarized by Apple or code signed for Windows yet, so each system asks once/);
+});
+
+test("README, package and site metadata identify Apple Silicon and the Windows preview", () => {
+  const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+  const intro = (path, heading) => read(path).split(heading)[1]?.split("\n\n")[0] ?? "";
+  const readmeEn = intro("../README.md", "**The one next to you.**");
+  const readmeJa = intro("../README.ja.md", "**となりにいる相棒。**");
+  const description = JSON.parse(read("../package.json")).description;
+  const page = read("../site/index.html");
+  const meta = /<meta\s+name="description"\s+content="([^"]+)"/.exec(page)?.[1] ?? "";
+  const og = /<meta property="og:description" content="([^"]+)"/.exec(page)?.[1] ?? "";
+  const scope = "Apple Silicon Macs and Windows 10/11 x64/ARM64 (preview)";
+
+  for (const [name, copy] of [["README hero", readmeEn], ["package description", description], ["site meta description", meta], ["Open Graph description", og]]) {
+    assert.ok(copy.includes(scope), `${name} must name the supported Macs and Windows preview architectures`);
+  }
+  assert.equal(og, `${description}.`, "package and Open Graph descriptions stay in sync");
+  assert.match(readmeJa, /Apple Silicon の Mac と Windows 10 \/ 11（x64 \/ ARM64、プレビュー）/);
+  assert.match(meta, /Apple Silicon の Mac と Windows 10 \/ 11（x64 \/ ARM64、プレビュー）/);
+
+  const app = read("../site/app.js");
+  const fineBlocks = [...app.matchAll(/^\s+fine: \{([\s\S]*?)^\s+\},/gm)].map((match) => match[1]);
+  assert.equal(fineBlocks.length, 2, "the download page has Japanese and English fine print");
+  for (const [language, block] of [["ja", fineBlocks[0]], ["en", fineBlocks[1]]]) {
+    for (const path of ["other", "handheld"]) {
+      const copy = new RegExp(`^\\s+${path}: "([^"]+)"`, "m").exec(block)?.[1] ?? "";
+      assert.match(copy, language === "ja"
+        ? /Apple Silicon の Mac と Windows 10 \/ 11（x64 \/ ARM64、プレビュー）/
+        : /Apple Silicon Macs and Windows 10\/11 x64\/ARM64 \(preview\)/, `${language} ${path} fallback`);
+    }
+  }
+  assert.match(app, /other: \(\) => "Apple Silicon の Mac と Windows 10 \/ 11（プレビュー）/);
+  assert.match(app, /other: \(\) => "I run on Apple Silicon Macs and Windows 10\/11 \(preview\)/);
+
+  const social = read("../scripts/derive-icons.py");
+  assert.match(social, /draw\.text\(\(528, 420\), "Apple Silicon Macs · Windows 10\/11 \(preview\)"/);
 });
