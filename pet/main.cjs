@@ -441,14 +441,15 @@ async function proxyRequest(method, pathname, body, timeoutMs = 8000) {
     return { ok: false, message: error instanceof Error ? error.message : String(error) };
   }
 
-  async function probeProxyStatusOnce() {
-    const result = await proxyRequest("GET", "/status", undefined, 3000);
-    if (result.ok) {
-      proxyStatus = result.data;
-      broadcastSettings();
-    }
-    return proxyStatus;
+}
+
+async function probeProxyStatusOnce() {
+  const result = await proxyRequest("GET", "/status", undefined, 3000);
+  if (result.ok) {
+    proxyStatus = result.data;
+    broadcastSettings();
   }
+  return proxyStatus;
 }
 
 let newsSync = Promise.resolve();
