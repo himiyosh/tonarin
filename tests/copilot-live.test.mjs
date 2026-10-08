@@ -34,6 +34,8 @@ test("local transcript validation removes classic silence hallucinations without
   const weak = { durationMs: 1800, voicedMs: 160, voiceRatio: 0.08, maxThresholdRatio: 1.1 };
   const strong = { durationMs: 1400, voicedMs: 600, voiceRatio: 0.35, maxThresholdRatio: 1.8 };
   assert.equal(acceptLocalTranscript("ご視聴ありがとうございました", strong), false);
+  assert.equal(acceptLocalTranscript("ふぅーはい。はい。次の動画でお会いしましょう。朝7時になりました。", strong), false);
+  assert.equal(acceptLocalTranscript("See you in the next video. It is now 7 AM.", strong), false);
   assert.equal(acceptLocalTranscript("♪", strong), false);
   assert.equal(acceptLocalTranscript("音楽", weak), false);
   assert.equal(acceptLocalTranscript("音楽", strong), true);

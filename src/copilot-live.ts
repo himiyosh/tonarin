@@ -67,6 +67,16 @@ const normalizedTranscript = (text: string): string =>
 export function acceptLocalTranscript(text: string, evidence?: LocalUtteranceEvidence): boolean {
   const normalized = normalizedTranscript(text);
   if (!normalized || !/[\p{L}\p{N}]/u.test(normalized)) return false;
+  if ([
+    "ご視聴ありがとうございました",
+    "ご覧いただきありがとうございました",
+    "字幕視聴ありがとうございました",
+    "次の動画でお会いしましょう",
+    "次回の動画でお会いしましょう",
+    "thankyouforwatching",
+    "thanksforwatching",
+    "seeyouinthenextvideo",
+  ].some((hallucination) => normalized.includes(hallucination))) return false;
   if (/^(♪+|♫+|音楽|music)$/.test(normalized)) {
     const strong = evidence &&
       evidence.voicedMs >= 320 &&
@@ -74,13 +84,7 @@ export function acceptLocalTranscript(text: string, evidence?: LocalUtteranceEvi
       evidence.maxThresholdRatio >= 1.25;
     return Boolean(strong);
   }
-  return ![
-    "ご視聴ありがとうございました",
-    "ご覧いただきありがとうございました",
-    "字幕視聴ありがとうございました",
-    "thankyouforwatching",
-    "thanksforwatching",
-  ].includes(normalized);
+  return true;
 }
 
 export function copilotVoiceErrorCode(error: unknown): "copilot-timeout" | "copilot-unavailable" | "copilot-turn" {
