@@ -17,7 +17,8 @@ Tonarin handles a microphone, API keys and connected apps, so these rules are ke
 
 | Area | Rule |
 |---|---|
-| Secrets | Gemini key, MCP tokens and the GitHub sign-in are encrypted with Electron `safeStorage` (macOS keychain, or DPAPI for the Windows account) and never sent to a page |
+| Voice privacy | The preferred whisper.cpp path keeps microphone audio on the device; only the final transcript and conversation context go to GitHub Copilot; local TTS requires an installed `localService` system voice |
+| Secrets | Optional legacy Gemini key, MCP tokens and the GitHub sign-in are encrypted with Electron `safeStorage` (macOS keychain, or DPAPI for the Windows account) and never sent to a page |
 | Local proxy | Binds to `127.0.0.1`, requires a bearer key, and rejects WebSocket connections from web page origins |
 | Copilot | Only Tonarin's custom read-only tools; built-in shell, file and URL tools are disabled; permission requests other than custom tools are rejected; empty temp working folder; Copilot Memory off |
 | Untrusted content | News articles and MCP results are labeled as data, not instructions, and capped in size; articles are fetched only from allow-listed HTTPS hosts, re-checked after redirects |

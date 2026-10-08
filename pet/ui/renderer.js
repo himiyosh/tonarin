@@ -17,6 +17,7 @@
  */
 import { CHARACTERS, characterName } from "./characters.js";
 import { applyI18n, getLanguage, setLanguage, t } from "./i18n.js";
+import { speakLocalText } from "./local-speech.js";
 import { loadSprite, ROW } from "./sprite.js";
 import { createSpeechGate } from "./speech-gate.js";
 
@@ -85,6 +86,8 @@ let mouthLevel = 0;
 let exchange = { you: "", reply: "", closed: true, card: null };
 let bubbleTimer;
 let silentSince = 0;
+let localSpeech;
+let localUtteranceOpen = false;
 
 // ---------------------------------------------------------------------------
 // Settings (owned by the main process; this page only asks for changes)
@@ -261,6 +264,8 @@ bubbleEl.addEventListener("mouseleave", () => {
 });
 
 function friendlyError(message = "") {
+  if (/speech recognition|whisper|local voice/i.test(message)) return t("pet.errorLocalVoice");
+  if (/copilot|signed in|license/i.test(message)) return t("pet.errorCopilotVoice");
   if (/quota|exhausted|429|rate/i.test(message)) return t("pet.errorQuota");
   if (/api key|permission|denied|401|403|unauthenticated/i.test(message)) return t("pet.errorKey");
   return t("pet.errorGeneric", { message });
@@ -499,20 +504,29 @@ function onMicChunk(pcm, level, low = level) {
     lastNoiseFilter = filter;
     speechGate.reset();
   }
+  const effectiveFilter = config?.voiceBackend === "copilot-local" && filter === "light" ? "standard" : filter;
   const { send, voice, ended } = speechGate.push({
     pcm,
     level,
     low,
     now,
-    filter,
+    filter: effectiveFilter,
     silenceMs: snap?.values.silenceMs ?? 700,
     petSpeaking: state.speaking,
   });
   if (!state.muted && voice) state.userSpeakingUntil = now + 400;
   if (state.sleeping || state.muted || state.conn !== "ready" || ws?.readyState !== WebSocket.OPEN) return;
   if (state.echoGuard && state.speaking) return; // speaker mode: do not let the pet hear itself
+  if (config?.voiceBackend === "copilot-local" && send.length && !localUtteranceOpen) {
+    localUtteranceOpen = true;
+    cancelLocalSpeech();
+    ws.send(JSON.stringify({ type: "interrupt" }));
+  }
   for (const chunk of send) ws.send(chunk);
-  if (ended) ws.send(JSON.stringify({ type: "audio_end" })); // nothing more until the next voice: let Gemini wrap up
+  if (ended) {
+    localUtteranceOpen = false;
+    ws.send(JSON.stringify({ type: "audio_end" }));
+  }
 }
 
 function onPlayerLevel(level, playing) {
@@ -532,6 +546,7 @@ function setMuted(muted) {
   state.muted = muted;
   state.lastActivity = performance.now();
   if (muted && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "audio_end" }));
+  if (muted) cancelLocalSpeech();
   syncMic();
   showBubble(muted ? t("pet.muted") : t("pet.unmuted"), "hint", 2500);
 }
@@ -550,6 +565,7 @@ function sleep(reason) {
   }
   syncMic();
   player?.clear();
+  cancelLocalSpeech();
   state.speaking = false;
   state.tools = 0;
   state.conn = "connecting";
@@ -646,11 +662,12 @@ function onServerMessage(message) {
   switch (message.type) {
     case "status":
       if (message.state === "ready") {
+        if (message.backend) config.voiceBackend = message.backend;
         if (state.conn !== "ready") sprite?.playOnce(ROW.waving); // say hello
         state.conn = "ready";
         if (!greeted) {
           greeted = true;
-          showBubble(snap.gemini.source === "none" ? t("pet.needKey") : t("pet.greet"), "hint", 5000);
+          showBubble(message.backend === "copilot-local" ? t("pet.greetLocal") : t("pet.greet"), "hint", 5000);
         } else if (bubbleEl.classList.contains("error") || bubbleEl.classList.contains("hint")) {
           hideBubble();
         }
@@ -703,6 +720,7 @@ function onServerMessage(message) {
 
     case "interrupted": // the user spoke over the pet: stop talking right away
       player?.clear();
+      cancelLocalSpeech();
       state.speaking = false;
       exchange.closed = true;
       break;
@@ -710,12 +728,53 @@ function onServerMessage(message) {
     case "turn_complete":
       player?.flush();
       exchange.closed = true;
+      if (message.backend === "copilot-local" && exchange.reply.trim()) speakLocalResponse(exchange.reply.trim());
       if (!bubbleEl.classList.contains("error") && !bubbleEl.classList.contains("hint")) {
         const length = exchange.you.length + exchange.reply.length;
         hideBubbleLater(Math.min(20_000, 6000 + length * 60)); // longer exchanges stay up longer
       }
       break;
   }
+}
+
+function cancelLocalSpeech() {
+  localSpeech?.abort();
+  localSpeech = undefined;
+  globalThis.speechSynthesis?.cancel();
+  state.speaking = false;
+}
+
+function speakLocalResponse(text) {
+  cancelLocalSpeech();
+  const controller = new AbortController();
+  localSpeech = controller;
+  void speakLocalText(text, sessionOptions().language, {
+    signal: controller.signal,
+    onStart: () => {
+      if (localSpeech !== controller) return;
+      state.speaking = true;
+      state.lastActivity = performance.now();
+      mouthLevel = 0.08;
+    },
+    onEnd: () => {
+      if (localSpeech !== controller) return;
+      localSpeech = undefined;
+      state.speaking = false;
+      mouthLevel = 0;
+    },
+    onError: () => {
+      if (localSpeech !== controller) return;
+      localSpeech = undefined;
+      state.speaking = false;
+      showBubble(t("pet.localSpeechError"), "error", 8000);
+    },
+  }).catch((error) => {
+    if (controller.signal.aborted || localSpeech !== controller) return;
+    localSpeech = undefined;
+    state.speaking = false;
+    console.error(error);
+    showBubble(t("pet.localSpeechError"), "error", 8000);
+  });
 }
 
 function showCaption() {
@@ -938,15 +997,16 @@ window.pet.onCommand(async (command) => {
     case "reset":
       if (state.sleeping) break;
       player?.clear();
+      cancelLocalSpeech();
       exchange = { you: "", reply: "", closed: true };
       if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "reset" }));
       showBubble(t("pet.reset"), "hint", 2500);
       break;
     case "reconnect":
+      snap = await window.pet.settings.get();
+      config = await window.pet.config();
       if (waitingForKey) {
-        // A key was saved (the proxy restarted with it): start the mic and the session now.
-        snap = await window.pet.settings.get();
-        if (snap.gemini.source === "none") break;
+        if (config?.voiceBackend === "unavailable") break;
         waitingForKey = false;
         hideBubble();
         await startTalking();
@@ -996,11 +1056,9 @@ async function main() {
     showBubble(t("pet.noProxyKey"), "error");
     return;
   }
-  if (snap.gemini.source === "none") {
-    // First run (or the key was removed): no mic and no connection yet. Main opens Settings > Connection; saving a
-    // key restarts the proxy and sends "reconnect", which starts everything.
+  if (config.voiceBackend === "unavailable") {
     waitingForKey = true;
-    showBubble(t("pet.needKey"), "hint", 0);
+    showBubble(t("pet.needVoiceBackend"), "hint", 0);
     return;
   }
   await startTalking();

@@ -25,10 +25,9 @@ English | [日本語](README.ja.md)
 
 ---
 
-Tonarin (となりん, "the one next to you") is a small character that lives on your desktop. You talk to it the way
-you would talk to a colleague at the next desk: it answers in about a second with **Gemini Live**, and when a question
-needs real thought (an article, a design decision, how some code works) it asks **GitHub Copilot**, on the plan you
-already have, and tells you the answer in its own words.
+Tonarin (となりん, "the one next to you") is a small character that lives on your desktop. Local whisper.cpp turns
+your speech into text, only final text goes to **GitHub Copilot**, and an installed OS voice reads the answer aloud.
+Audio stays on the computer. The previous Gemini Live path remains available for compatibility.
 
 ## Contents
 
@@ -58,13 +57,13 @@ already have, and tells you the answer in its own words.
 
 | Area | What you get |
 |---|---|
-| **Conversation** | Real-time voice with Gemini Live, barge-in, captions of both sides, Japanese and English (UI and speech are set separately). |
+| **Conversation** | Local speech recognition, GitHub Copilot replies, local system speech, barge-in and captions in Japanese and English. The legacy Gemini Live path remains available. |
 | **Copilot deep dives** | `ask_copilot` hands articles, comparisons, explanations and design questions to a sandboxed Copilot session. |
 | **News** | Keep the 12 Japanese/English tech feeds as defaults; opt into verified Japanese public-agency, Osaka public-life and GOV.UK/NSF English RSS sources, or add your own public feed. Publisher-restricted sources provide headlines/descriptions only; personal article reads check robots.txt and do not return paywalled text. |
 | **Mail (MOCK/DEMO)** | Off by default: try fictional Gmail-style and Outlook-style authorization, sender/subject notices and local read-aloud. No real sign-in, mailbox access or AI transfer. |
 | **Reminders and automations** | "Remind me in 20 minutes", a morning briefing, scheduled Copilot research, break nudges and keyword watch, with a history you can review. |
 | **Connected apps (MCP)** | Model Context Protocol servers become the pet's tools: your Mac's calendar (Google, iCloud, Exchange; macOS), Microsoft Learn, and GitHub (read-only, with **Sign in with GitHub**). |
-| **Noise filter** | Only voice-like sound reaches Gemini, so typing, fans or a door do not start a conversation. Three levels. |
+| **Noise filter** | Only voice-like sound is recognized, so typing, fans or a door do not start a conversation. Three levels. |
 | **Usage and cost** | A settings page that shows what the paid tier would bill, today's usage and an estimate. |
 | **Characters** | 8 original characters, sizes from 50% to 200%, and support for Codex / ChatGPT pet spritesheets. |
 | **Mac-native touches** | Menu bar icon, Liquid Glass app icon on macOS 26, sleeps with your screen lock, and the bubble opens on whichever side of the pet has room. |
@@ -77,8 +76,9 @@ already have, and tells you the answer in its own words.
 | | |
 |---|---|
 | **Computer** | A Mac with Apple Silicon (developed and tested on macOS 26), or a Windows 10 / 11 PC, x64 or ARM64 (preview). |
-| **Gemini API key** | Free from [Google AI Studio](https://aistudio.google.com/apikey). The free tier works (see [Costs](#costs)). |
-| **GitHub Copilot** *(optional)* | Any plan. Sign in once with the [Copilot CLI](https://github.com/github/copilot-cli), or set `COPILOT_GITHUB_TOKEN`. Without it, Tonarin still talks, just without deep dives. |
+| **Local speech recognition** | `whisper-server` and a local model. See [Configuration](docs/configuration.md#realtime-voice). |
+| **GitHub Copilot** | Any plan. Sign in once with the [Copilot CLI](https://github.com/github/copilot-cli), or set `COPILOT_GITHUB_TOKEN`. |
+| **Gemini API key** *(optional)* | Needed only for the legacy Gemini Live path when local recognition is unavailable. |
 | **Node.js** | 22.12 or later, only to build from source. |
 
 ### Download
@@ -88,7 +88,7 @@ computer, or from [GitHub Releases](https://github.com/himiyosh/tonarin/releases
 (or `.zip`) for a Mac, `Tonarin-<version>-win-x64-setup.exe` or `-win-arm64-setup.exe` for Windows. Each release lists
 SHA-256 checksums in `SHA256SUMS.txt`.
 
-On first launch the settings window opens at **Connection**. Paste your Gemini API key and the pet wakes up.
+On first launch **Connection** explains local speech setup. Once it is ready, the pet works without Gemini.
 
 > [!NOTE]
 > The apps are not notarized by Apple or code signed for Windows yet, so each system asks once:
@@ -145,14 +145,18 @@ flowchart LR
     Proxy["Local proxy<br/>127.0.0.1 only"]
     MCP["MCP servers<br/>calendar · Learn · GitHub"]
   end
-  Gemini["Gemini Live API"]
+  ASR["whisper.cpp<br/>(on device)"]
+  Voice["Local OS voice"]
+  Gemini["Gemini Live API<br/>(legacy optional path)"]
   Copilot["GitHub Copilot<br/>(Copilot SDK)"]
   Feeds["RSS feeds<br/>(allow-listed)"]
 
   Pet <-- "WebSocket /v1/live<br/>PCM audio + events" --> Proxy
   Main -- "starts, configures" --> Proxy
-  Proxy <-- "bidirectional stream" --> Gemini
-  Proxy -- "ask_copilot<br/>automations" --> Copilot
+  Proxy <-- "local recognition" --> ASR
+  Pet <-- "local speech" --> Voice
+  Proxy -- "final text<br/>automations" --> Copilot
+  Proxy -. "optional compatibility path" .-> Gemini
   Proxy -- "list_headlines<br/>read_article" --> Feeds
   Proxy -- "mcp_* tools" --> MCP
 ```
@@ -161,13 +165,15 @@ flowchart LR
   draws the character and the speech bubble.
 - **Main process** (`pet/main.cjs`): settings, secure storage, the menu bar or notification-area icon, window layout,
   Sign in with GitHub, and the bundled proxy's lifecycle.
-- **Proxy** (`src/`): relays audio to Gemini Live, runs the tools (news, reminders, automations, MCP), and keeps a
-  dedicated Copilot session for deep dives. It is also an OpenAI-compatible endpoint, which is how the project
+- **Proxy** (`src/`): coordinates local recognition and Copilot conversation, runs the tools (news, reminders,
+  automations, MCP), and retains the legacy Gemini Live path. It is also an OpenAI-compatible endpoint, which is how the project
   started (see [Configuration](docs/configuration.md#openai-compatible-endpoint)).
 
 ## Privacy and security
 
-- **Keys stay local.** The Gemini key, MCP tokens and the GitHub sign-in are encrypted with Electron `safeStorage`
+- **Local-path audio stays on the device.** whisper.cpp recognizes it locally; only final text and conversation
+  context go to GitHub Copilot. Replies use an installed local OS voice.
+- **Keys stay local.** The optional Gemini key, MCP tokens and the GitHub sign-in are encrypted with Electron `safeStorage`
   (the macOS keychain, or DPAPI for your Windows account). Pages never receive them.
 - **Local-only proxy.** It binds to `127.0.0.1`, requires a bearer key, and rejects WebSocket connections from web pages.
 - **Copilot is sandboxed.** Only Tonarin's own read-only tools are exposed; built-in shell, file and URL tools are
@@ -181,7 +187,7 @@ flowchart LR
   after 8 hours and are renewed automatically. Access is read-only.
 
 > [!IMPORTANT]
-> On the Gemini **free tier**, Google may use what you send to improve its products, and human reviewers may read it.
+> If you choose the legacy Gemini path, on the Gemini **free tier** Google may use what you send to improve its products, and human reviewers may read it.
 > Keep conversations and connected apps free of confidential or personal data, or use the paid tier.
 
 See [SECURITY.md](SECURITY.md) to report a vulnerability.

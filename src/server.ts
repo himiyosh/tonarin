@@ -22,10 +22,11 @@ import { mkdirSync } from "node:fs";
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CopilotClient, ToolSet, type CopilotSession, type SessionConfig } from "@github/copilot-sdk";
+import { CopilotClient, ToolSet, defineTool, type CopilotSession, type SessionConfig } from "@github/copilot-sdk";
 import { z } from "zod";
 import { getAuthStatusWithRecovery, withTimeout } from "./copilot-startup.js";
-import { attachLive, type Announcement, type LiveSession, type LiveTool, type NoiseFilter, type SessionOptions } from "./live.js";
+import { attachCopilotLive, selectVoiceBackend, type CopilotVoiceConversation } from "./copilot-live.js";
+import { attachLive, type Announcement, type GeminiSchema, type LiveSession, type LiveTool, type NoiseFilter, type SessionOptions } from "./live.js";
 import {
   CATALOG, FEEDS, NEWS_CATEGORIES, asUntrustedNewsData, checkKeywordSources, configureNewsSources, discoverNewsFeed, enabledFeedIds,
   fetchArticle, fetchHeadlines, headlineFailure, keywordFeedIds, newsToolsFor, type Language,
@@ -34,7 +35,7 @@ import { NewsFetchError } from "./news-network.js";
 import { AutomationStore, describeTrigger, parseDays, ValidationError, type Automation } from "./automations.js";
 import { McpManager, validateConfigs } from "./mcp.js";
 import { formatLocal, ReminderStore, resolveDueTime, type Reminder } from "./reminders.js";
-import { forwardTranscription, startWhisper, stopWhisper, whisperRunning } from "./stt.js";
+import { forwardTranscription, startWhisper, stopWhisper, transcribePcm, waitForWhisperReady, whisperRunning } from "./stt.js";
 import { estimateUsd, PAID_PRICES, UsageStore } from "./usage.js";
 import { listJapaneseVoices, synthesize, TTS_MODEL_ID, ttsAvailable } from "./tts.js";
 import { writeShutdownMarker } from "./proxy-stop.js";
@@ -58,6 +59,7 @@ const DEBUG_REQUESTS = process.env.DEBUG_REQUESTS === "1";
 // Realtime voice (desktop pet). Disabled unless GEMINI_API_KEY is set.
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_LIVE_MODEL = process.env.GEMINI_LIVE_MODEL ?? "gemini-3.8-live";
+const VOICE_BACKEND = process.env.VOICE_BACKEND === "local" || process.env.VOICE_BACKEND === "gemini" ? process.env.VOICE_BACKEND : "auto";
 // Defaults for sessions whose pet does not choose (the settings window normally does).
 const GEMINI_VOICE = process.env.GEMINI_VOICE ?? "Aoede";
 const LIVE_SILENCE_MS = Number(process.env.LIVE_SILENCE_MS ?? 700);
@@ -266,7 +268,13 @@ async function requireCopilot(): Promise<void> {
   }
 }
 
-function createCopilotSession(preamble: string, tone: string, streaming: boolean, language: Language = LIVE_LANGUAGE): Promise<CopilotSession> {
+function createCopilotSession(
+  preamble: string,
+  tone: string,
+  streaming: boolean,
+  language: Language = LIVE_LANGUAGE,
+  tools: SessionConfig["tools"] = newsToolsFor(language),
+): Promise<CopilotSession> {
   return client.createSession({
     model: BYOK_BASE_URL ? BYOK_MODEL : MODEL,
     ...(BYOK_BASE_URL ? { provider: { type: "openai" as const, baseUrl: BYOK_BASE_URL } } : {}),
@@ -274,7 +282,7 @@ function createCopilotSession(preamble: string, tone: string, streaming: boolean
     streaming,
     workingDirectory: SANDBOX_DIR,
     memory: { enabled: false }, // keep this personal chat out of Copilot Memory
-    tools: newsToolsFor(language),
+    tools,
     // Only our custom news tools. No shell, file, URL or MCP tools, because
     // untrusted article text must never be able to trigger them.
     availableTools: new ToolSet().addCustom("*"),
@@ -294,8 +302,70 @@ function createCopilotSession(preamble: string, tone: string, streaming: boolean
   });
 }
 
-function createCompanionSession(persona: string | undefined): Promise<CopilotSession> {
-  return createCopilotSession(persona?.trim() || DEFAULT_PERSONA, VOICE_STYLE, true);
+function createCompanionSession(persona: string | undefined, language: Language = LIVE_LANGUAGE): Promise<CopilotSession> {
+  return createCopilotSession(persona?.trim() || DEFAULT_PERSONA, VOICE_STYLE, true, language);
+}
+
+function zodForVoiceSchema(schema: GeminiSchema | undefined): z.ZodType {
+  if (!schema) return z.object({});
+  switch (schema.type) {
+    case "STRING":
+      return schema.enum?.length ? z.enum(schema.enum as [string, ...string[]]) : z.string();
+    case "INTEGER":
+      return z.number().int();
+    case "NUMBER":
+      return z.number();
+    case "BOOLEAN":
+      return z.boolean();
+    case "ARRAY":
+      return z.array(zodForVoiceSchema(schema.items));
+    case "OBJECT": {
+      const required = new Set(schema.required ?? []);
+      const shape = Object.fromEntries(
+        Object.entries(schema.properties ?? {}).map(([key, value]) => {
+          const field = zodForVoiceSchema(value);
+          return [key, required.has(key) ? field : field.optional()];
+        }),
+      );
+      return z.object(shape);
+    }
+  }
+}
+
+async function createVoiceConversation(
+  options: SessionOptions,
+  display: (event: Record<string, unknown>) => void,
+): Promise<CopilotVoiceConversation> {
+  await requireCopilot();
+  let turnSignal = new AbortController().signal;
+  const tools = liveTools(options).map((tool) =>
+    defineTool(tool.name, {
+      description: tool.description,
+      parameters: zodForVoiceSchema(tool.parameters),
+      skipPermission: true,
+      defer: "never",
+      handler: (args, invocation) => tool.run(args as Record<string, unknown>, invocation.signal ?? turnSignal, options, { display }),
+    }),
+  );
+  const session = await createCopilotSession(liveInstructions(options), VOICE_STYLE, true, options.language, tools);
+  return {
+    async send(prompt, signal, onDelta) {
+      turnSignal = signal;
+      const unsubscribe = session.on("assistant.message_delta", (event) => onDelta(event.data.deltaContent));
+      const onAbort = () => void session.abort().catch(() => {});
+      signal.addEventListener("abort", onAbort, { once: true });
+      try {
+        usage.addCopilot();
+        const result = await session.sendAndWait({ prompt }, 120_000);
+        return result?.data.content?.trim() ?? "";
+      } finally {
+        unsubscribe();
+        signal.removeEventListener("abort", onAbort);
+      }
+    },
+    abort: () => session.abort(),
+    disconnect: () => session.disconnect(),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -897,6 +967,8 @@ const server = http.createServer(async (req, res) => {
       // For the desktop app's settings window: what works right now. No account details.
       sendJson(res, 200, {
         live: Boolean(live),
+        voiceBackend: voiceBackend ?? "unavailable",
+        localSpeechRecognition: whisperRunning(),
         copilot: copilotState,
         reminders: reminders.list().length,
         waiting: reminders.dueCount + runQueue.length,
@@ -912,7 +984,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && path === "/usage") {
       // For the settings window: per-day token counts and what they would cost on the paid tier.
       const days = usage.list().map((day) => ({ ...day, estimate: estimateUsd(day) }));
-      sendJson(res, 200, { days, prices: PAID_PRICES, live: Boolean(live) });
+      sendJson(res, 200, { days, prices: PAID_PRICES, live: Boolean(live), voiceBackend: voiceBackend ?? "unavailable" });
       return;
     }
     // Automations: the settings window manages them through the app (which holds the key).
@@ -1020,9 +1092,23 @@ setInterval(() => {
   for (const client of eventClients) client.write(": ping\n\n");
 }, 25_000).unref();
 
-const live = GEMINI_API_KEY
-  ? attachLive(server, {
-      apiKey: GEMINI_API_KEY,
+const shouldTryLocal = VOICE_BACKEND === "local" || (VOICE_BACKEND === "auto" && !GEMINI_API_KEY);
+const sttStatus = shouldTryLocal ? startWhisper() : "off (legacy Gemini path selected)";
+const localVoiceReady = shouldTryLocal && whisperRunning() && await waitForWhisperReady(30_000);
+if (shouldTryLocal && whisperRunning() && !localVoiceReady) stopWhisper();
+const voiceBackend = selectVoiceBackend(VOICE_BACKEND, localVoiceReady, Boolean(GEMINI_API_KEY));
+const live = voiceBackend === "copilot-local"
+  ? attachCopilotLive(server, {
+      sessionOptions,
+      checkKey: keyMatches,
+      transcribe: (pcm, options, signal) => transcribePcm(pcm, options.language, signal),
+      createConversation: createVoiceConversation,
+      debug: DEBUG_REQUESTS,
+      onSessionReady: announceWaiting,
+    })
+  : voiceBackend === "gemini"
+    ? attachLive(server, {
+      apiKey: GEMINI_API_KEY!,
       model: GEMINI_LIVE_MODEL,
       sessionOptions,
       instructions: liveInstructions,
@@ -1033,7 +1119,7 @@ const live = GEMINI_API_KEY
       onSessionReady: announceWaiting,
       usage,
     })
-  : undefined;
+    : undefined;
 
 reminders.on("due", (reminder) => {
   const delivered = live?.announce((session) => reminderAnnouncement(reminder, session.options.language)) ?? 0;
@@ -1321,7 +1407,6 @@ copilotStarted = startCopilot().then(() => {
     if (researchSessions[LIVE_LANGUAGE] === pending) delete researchSessions[LIVE_LANGUAGE];
   });
 });
-const sttStatus = startWhisper();
 server.listen(PORT, HOST, () => {
   console.log(`copilot-proxy listening on http://${HOST}:${PORT}/v1`);
   console.log(`  backend : ${BYOK_BASE_URL ? `BYOK ${BYOK_BASE_URL} (${BYOK_MODEL})` : `GitHub Copilot (${MODEL})`}`);
@@ -1329,7 +1414,13 @@ server.listen(PORT, HOST, () => {
   console.log(`  hearing : ${sttStatus}`);
   console.log(`  speech  : ${ttsAvailable ? `POST /v1/audio/speech (macOS say, model id ${TTS_MODEL_ID})` : "unavailable (not macOS)"}`);
   console.log(
-    `  live    : ${live ? `ws://${HOST}:${PORT}/v1/live (Gemini ${GEMINI_LIVE_MODEL}, voice ${GEMINI_VOICE})` : "disabled (no GEMINI_API_KEY: set it in the app's settings or .env)"}`,
+    `  live    : ${
+      voiceBackend === "copilot-local"
+        ? `ws://${HOST}:${PORT}/v1/live (local whisper.cpp -> GitHub Copilot -> local system voice)`
+        : voiceBackend === "gemini"
+          ? `ws://${HOST}:${PORT}/v1/live (Gemini ${GEMINI_LIVE_MODEL}, voice ${GEMINI_VOICE})`
+          : "disabled (install whisper.cpp + a local model, or configure the legacy Gemini key)"
+    }`,
   );
   if (!process.env.PROXY_API_KEY) {
     console.log(`  API key : ${API_KEY}  (generated; set PROXY_API_KEY to keep it fixed)`);
