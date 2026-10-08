@@ -32,6 +32,7 @@ const {
 } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
+const { findCopilotCliPath } = require("./copilot-cli.cjs");
 const { connect } = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
@@ -219,6 +220,7 @@ function freePort() {
 function startProxy() {
   fs.mkdirSync(logDir(), { recursive: true });
   const logFile = path.join(logDir(), "proxy.log");
+  const copilotCliPath = findCopilotCliPath();
   const childEnv = {
     ...process.env,
     // An app started from the Dock or Finder gets a short PATH; Windows keeps its own.
@@ -231,7 +233,9 @@ function startProxy() {
     REMINDERS_FILE: path.join(app.getPath("userData"), "reminders.json"),
     AUTOMATIONS_FILE: path.join(app.getPath("userData"), "automations.json"),
     USAGE_FILE: path.join(app.getPath("userData"), "usage.json"), // token counts per day, no content
+    ...(copilotCliPath ? { COPILOT_CLI_PATH: copilotCliPath } : {}),
   };
+  if (copilotCliPath) console.log(`[pet] Copilot SDK runtime: ${copilotCliPath}`);
   if (BUNDLED_PROXY) childEnv.TONARIN_PROXY_LOG_FILE = logFile;
   else delete childEnv.TONARIN_PROXY_LOG_FILE;
   if (env("DEBUG_REQUESTS")) childEnv.DEBUG_REQUESTS = env("DEBUG_REQUESTS"); // the bundled proxy does not read .env

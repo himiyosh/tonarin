@@ -76,7 +76,7 @@ Tonarin は、デスクトップに住む小さなキャラクターです。ロ
 |---|---|
 | **パソコン** | Apple Silicon の Mac (macOS 26 で開発と動作確認をしています)、または Windows 10 / 11 の PC (x64 か ARM64、プレビュー)。 |
 | **ローカル音声認識** | `whisper-server` とローカルモデル。セットアップは [設定リファレンス](docs/configuration.md#realtime-voice) を参照。 |
-| **GitHub Copilot** | どのプランでも可。[Copilot CLI](https://github.com/github/copilot-cli) で一度サインインするか、`COPILOT_GITHUB_TOKEN` を設定します。 |
+| **GitHub Copilot** | どのプランでも可。macOS では自動検出される [Copilot CLI](https://github.com/github/copilot-cli) で一度サインインするか、`COPILOT_GITHUB_TOKEN` を設定します。 |
 | **Gemini API キー** *(任意)* | ローカル音声認識を使わず、従来の Gemini Live 経路を使う場合だけ必要です。 |
 | **Node.js** | 22.12 以上 (ソースからビルドする場合だけ)。 |
 

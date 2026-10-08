@@ -64,6 +64,7 @@ its settings window is the source of truth there.
 | `COPILOT_MODEL` | `gpt-5.4-mini` | Copilot model id. `npm run models` lists what your plan allows; `npm run bench` compares latency |
 | `COPILOT_REASONING_EFFORT` | unset | `none`, `low`, … |
 | `COPILOT_GITHUB_TOKEN` | unset | Use a token instead of the Copilot CLI sign-in |
+| `COPILOT_CLI_PATH` | auto-detected on macOS | Override the Copilot CLI executable used by the SDK |
 | `COPILOT_SANDBOX_DIR` | `copilot-proxy-sandbox` in the system temp folder | Copilot's working folder. Keep it outside any repository |
 | `FILLER_TEXT` | `ちょっと調べてみますね。` | What the OpenAI-compatible endpoint streams while a tool runs |
 | `LLM_BASE_URL` / `LLM_MODEL` | unset | Bring your own OpenAI-compatible model instead of Copilot (for offline tests) |

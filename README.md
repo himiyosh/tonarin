@@ -76,7 +76,7 @@ Audio stays on the computer. The previous Gemini Live path remains available for
 |---|---|
 | **Computer** | A Mac with Apple Silicon (developed and tested on macOS 26), or a Windows 10 / 11 PC, x64 or ARM64 (preview). |
 | **Local speech recognition** | `whisper-server` and a local model. See [Configuration](docs/configuration.md#realtime-voice). |
-| **GitHub Copilot** | Any plan. Sign in once with the [Copilot CLI](https://github.com/github/copilot-cli), or set `COPILOT_GITHUB_TOKEN`. |
+| **GitHub Copilot** | Any plan. Sign in once with the [Copilot CLI](https://github.com/github/copilot-cli), which Tonarin auto-detects on macOS, or set `COPILOT_GITHUB_TOKEN`. |
 | **Gemini API key** *(optional)* | Needed only for the legacy Gemini Live path when local recognition is unavailable. |
 | **Node.js** | 22.12 or later, only to build from source. |
 
