@@ -5,7 +5,7 @@
 # Tonarin (となりん)
 
 **となりにいる相棒。** リアルタイムで話せて、じっくり考える仕事は GitHub Copilot に任せる、<br/>
-macOS と Windows のデスクトップに住む音声コンパニオンです。
+Apple Silicon の Mac と Windows 10 / 11（x64 / ARM64、プレビュー）で使える、デスクトップに住む音声コンパニオンです。
 
 **[ダウンロード](https://himiyosh.github.io/tonarin/?lang=ja)** · [リリースノート](https://github.com/himiyosh/tonarin/releases)
 

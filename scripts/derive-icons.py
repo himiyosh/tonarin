@@ -95,7 +95,7 @@ def social_card(image, target):
 
     draw.text((520, 168), "Tonarin", font=font(132, 700), fill="white")
     draw.text((526, 334), "The one next to you.", font=font(54, 600), fill="white")
-    draw.text((528, 420), "A voice desk companion for macOS and Windows", font=font(30, 500), fill="white")
+    draw.text((528, 420), "Apple Silicon Macs · Windows 10/11 (preview)", font=font(30, 500), fill="white")
     card.convert("RGB").save(target, optimize=True)
     report(target)
 

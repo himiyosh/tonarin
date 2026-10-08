@@ -4,8 +4,8 @@
 
 # Tonarin
 
-**The one next to you.** A voice desk companion for macOS and Windows that talks with you in real time,<br/>
-and hands the careful thinking to GitHub Copilot.
+**The one next to you.** A voice desk companion for Apple Silicon Macs and Windows 10/11 x64/ARM64 (preview)<br/>
+that talks with you in real time and hands the careful thinking to GitHub Copilot.
 
 **[Download](https://himiyosh.github.io/tonarin/)** · [Release notes](https://github.com/himiyosh/tonarin/releases)
 

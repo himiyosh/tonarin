@@ -40,8 +40,8 @@ function downloadsSection({ tag, repo, files, site }) {
   return [
     "### Downloads",
     `| Platform | Files |\n|---|---|\n${table}`,
-    `The [download page](${site}) picks the right file for your computer and walks you through the first launch: the ` +
-      `builds are not signed yet, so macOS and Windows ask once before opening them.${checksums}`,
+    `The [download page](${site}) picks the right file for your computer and explains the first launch, ` +
+      `including how to proceed if macOS or Windows warns about the app.${checksums}`,
   ].join("\n\n");
 }
 

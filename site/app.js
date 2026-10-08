@@ -23,8 +23,8 @@ const TEXT = {
     fine: {
       mac: "Apple Silicon の Mac 用です (Intel の Mac はまだ対応していません)。",
       win: "Windows 10 / 11 用のプレビュー版です。",
-      other: "Tonarin は macOS (Apple Silicon) と Windows 10 / 11 で動きます。",
-      handheld: "Tonarin はパソコン用のアプリです。Mac (Apple Silicon) か Windows 10 / 11 のパソコンでこのページを開いてください。",
+      other: "Tonarin は Apple Silicon の Mac と Windows 10 / 11（x64 / ARM64、プレビュー）で動きます。",
+      handheld: "Tonarin は Apple Silicon の Mac と Windows 10 / 11（x64 / ARM64、プレビュー）向けのパソコン用アプリです。インストールするには、このページをどちらかのパソコンで開いてください。",
     },
     fineTail: ["Mac 版はアドホック署名済みですが Apple の公証は受けていません。Windows 版は未署名です。初回起動時に警告が出る場合は、", "はじめての起動", "の手順をどうぞ。"],
     noRelease: "最初のリリースを準備しています。それまではソースからビルドできます。",
@@ -49,7 +49,7 @@ const TEXT = {
     answer: {
       win: (tag) => `うん、${tag} から Windows でも話せるようになったよ。まだプレビュー版だけどね。この PC 用はこれ！`,
       mac: (tag) => `うん。Apple Silicon の Mac 用はこれだよ。${tag} が最新！`,
-      other: () => "Mac (Apple Silicon) と Windows で動くよ。どっちにする？",
+      other: () => "Apple Silicon の Mac と Windows 10 / 11（プレビュー）で動くよ。どっちにする？",
       none: () => "もうすぐ最初のリリースだよ。それまではソースからビルドしてね。",
       error: () => "うまく読み込めなかったみたい。GitHub の Releases から持っていってね。",
     },
@@ -67,8 +67,8 @@ const TEXT = {
     fine: {
       mac: "For Apple Silicon Macs (Intel Macs are not supported yet).",
       win: "A preview for Windows 10 and 11.",
-      other: "Tonarin runs on macOS (Apple Silicon) and Windows 10 / 11.",
-      handheld: "Tonarin is a desktop app: open this page on a Mac (Apple Silicon) or a Windows 10 / 11 PC to install it.",
+      other: "Tonarin runs on Apple Silicon Macs and Windows 10/11 x64/ARM64 (preview).",
+      handheld: "Tonarin is a desktop app for Apple Silicon Macs and Windows 10/11 x64/ARM64 (preview). Open this page on one of those computers to install it.",
     },
     fineTail: ["Mac builds are ad hoc signed but not notarized by Apple; Windows installers are unsigned. A warning may appear when you first open the app; see ", "the first launch", " steps."],
     noRelease: "The first release is on its way. Until then you can build from source.",
@@ -93,7 +93,7 @@ const TEXT = {
     answer: {
       win: (tag) => `Yes! Since ${tag} I can talk on Windows too. It's a preview for now. This one's for your PC!`,
       mac: (tag) => `Yes. Here's the one for Apple Silicon Macs. ${tag} is the latest!`,
-      other: () => "I run on Apple Silicon Macs and on Windows. Which one's yours?",
+      other: () => "I run on Apple Silicon Macs and Windows 10/11 (preview). Which one's yours?",
       none: () => "The first release is coming soon. Until then, you can build me from source.",
       error: () => "I couldn't load the list. Grab me from the Releases page on GitHub.",
     },

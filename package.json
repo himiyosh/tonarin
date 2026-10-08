@@ -3,7 +3,7 @@
   "productName": "Tonarin",
   "version": "0.2.0",
   "private": true,
-  "description": "A voice desk companion for macOS and Windows: local speech recognition with GitHub Copilot, plus a legacy Gemini Live path",
+  "description": "A voice desk companion for Apple Silicon Macs and Windows 10/11 x64/ARM64 (preview): local speech recognition with GitHub Copilot, plus a legacy Gemini Live path",
   "license": "MIT",
   "author": "himiyosh",
   "homepage": "https://github.com/himiyosh/tonarin#readme",
