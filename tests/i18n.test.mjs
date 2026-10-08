@@ -61,19 +61,20 @@ test("the main process says Ctrl on Windows and Control on a Mac", () => {
   }
 });
 
-test("news settings labels, failures and licensing credits exist in both languages", () => {
+test("backend-aware voice errors exist in both languages without blaming Gemini for local failures", () => {
   const source = readFileSync(new URL("../pet/ui/i18n.js", import.meta.url), "utf8");
   const messages = source.slice(source.indexOf("const MESSAGES = {"), source.indexOf("const WINDOWS_MESSAGES = {"));
   const japanese = messages.slice(messages.indexOf("\n  ja: {"), messages.indexOf("\n  en: {"));
   const english = messages.slice(messages.indexOf("\n  en: {"));
-  const keys = (text) => [...new Set([...text.matchAll(/^\s+"(news\.[\w.]+)":/gm)].map((match) => match[1]))].sort();
+  const keys = (text) => [...new Set([...text.matchAll(/^\s+"(pet\.error[\w.]+)":/gm)].map((match) => match[1]))].sort();
   assert.deepEqual(keys(japanese), keys(english));
-  for (const key of ["news.error.url", "news.error.feed", "news.error.rights", "news.empty",
-    "news.noCandidates", "news.feedOnly", "news.hostLimit", "news.credits"]) {
+  for (const key of ["pet.errorGeneric", "pet.errorGemini", "pet.errorLocalVoice", "pet.errorCopilotVoice",
+    "pet.errorCopilotTimeout", "pet.errorCopilotGeneric"]) {
     assert.ok(keys(japanese).includes(key), `${key} is translated`);
   }
-  assert.match(japanese, /"news\.noCandidates": "候補なし"/);
-  assert.match(english, /"news\.noCandidates": "No sources available"/);
+  assert.match(japanese, /"pet\.errorCopilotTimeout": "GitHub Copilot/);
+  assert.doesNotMatch(japanese.match(/"pet\.errorCopilotTimeout":[^\n]+/)?.[0] ?? "", /Gemini/);
+  assert.doesNotMatch(english.match(/"pet\.errorCopilotTimeout":[^\n]+/)?.[0] ?? "", /Gemini/);
 });
 
 test("mock mail labels and consent errors match in both languages without implying a real connection", () => {

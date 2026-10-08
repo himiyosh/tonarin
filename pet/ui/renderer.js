@@ -20,6 +20,7 @@ import { applyI18n, getLanguage, setLanguage, t } from "./i18n.js";
 import { speakLocalText } from "./local-speech.js";
 import { loadSprite, ROW } from "./sprite.js";
 import { createSpeechGate } from "./speech-gate.js";
+import { voiceErrorKey } from "./voice-errors.js";
 
 const root = document.documentElement;
 const petEl = document.getElementById("pet");
@@ -86,8 +87,12 @@ let mouthLevel = 0;
 let exchange = { you: "", reply: "", closed: true, card: null };
 let bubbleTimer;
 let silentSince = 0;
+let preserveBackendErrorUntil = 0;
 let localSpeech;
 let localUtteranceOpen = false;
+let localUtteranceChunks = [];
+let localUtteranceOverflow = false;
+const MAX_LOCAL_UTTERANCE_CHUNKS = 3000; // 120 seconds at 40 ms per chunk
 
 // ---------------------------------------------------------------------------
 // Settings (owned by the main process; this page only asks for changes)
@@ -110,10 +115,7 @@ function sessionOptions() {
     persona: values.persona,
     silenceMs: values.silenceMs,
     noiseFilter: values.noiseFilter,
-    feeds: values.feeds ?? [
-      ...snap.catalog.defaultFeeds[language],
-      ...values.customFeeds.filter((feed) => feed.language === language).map((feed) => feed.id),
-    ],
+    feeds: [...snap.catalog.defaultFeeds[language]],
     useCopilot: values.useCopilot,
   };
 }
@@ -263,12 +265,9 @@ bubbleEl.addEventListener("mouseleave", () => {
   if (pendingHideMs && !bubbleEl.hidden) bubbleTimer = setTimeout(hideBubble, 3000);
 });
 
-function friendlyError(message = "") {
-  if (/speech recognition|whisper|local voice/i.test(message)) return t("pet.errorLocalVoice");
-  if (/copilot|signed in|license/i.test(message)) return t("pet.errorCopilotVoice");
-  if (/quota|exhausted|429|rate/i.test(message)) return t("pet.errorQuota");
-  if (/api key|permission|denied|401|403|unauthenticated/i.test(message)) return t("pet.errorKey");
-  return t("pet.errorGeneric", { message });
+function friendlyError(message = {}) {
+  const detail = typeof message === "string" ? { message } : message;
+  return t(voiceErrorKey(detail), { message: detail.message ?? "" });
 }
 
 // ---------------------------------------------------------------------------
@@ -491,21 +490,30 @@ function closeMic() {
   for (const track of mic.stream.getTracks()) track.stop();
   mic.ctx.close().catch(() => {});
   mic = undefined;
+  speechGate.reset();
+  resetLocalUtterance();
 }
 
-// Room noise (typing, a fan, a door) must not start a conversation: only voice-like audio goes to Gemini, with a
-// little audio from before it, until your voice has been gone longer than the end-of-turn pause (speech-gate.js).
+// Room noise (typing, a fan, a door) must not start a conversation: only voice-like audio becomes an utterance, with
+// a little audio from before it, until your voice has been gone longer than the end-of-turn pause (speech-gate.js).
 const speechGate = createSpeechGate();
 let lastNoiseFilter;
+function resetLocalUtterance() {
+  localUtteranceOpen = false;
+  localUtteranceChunks = [];
+  localUtteranceOverflow = false;
+}
+
 function onMicChunk(pcm, level, low = level) {
   const now = performance.now();
   const filter = snap?.values.noiseFilter ?? "standard";
   if (filter !== lastNoiseFilter) {
     lastNoiseFilter = filter;
     speechGate.reset();
+    resetLocalUtterance();
   }
   const effectiveFilter = config?.voiceBackend === "copilot-local" && filter === "light" ? "standard" : filter;
-  const { send, voice, ended } = speechGate.push({
+  const { send, voice, ended, utterance } = speechGate.push({
     pcm,
     level,
     low,
@@ -517,14 +525,29 @@ function onMicChunk(pcm, level, low = level) {
   if (!state.muted && voice) state.userSpeakingUntil = now + 400;
   if (state.sleeping || state.muted || state.conn !== "ready" || ws?.readyState !== WebSocket.OPEN) return;
   if (state.echoGuard && state.speaking) return; // speaker mode: do not let the pet hear itself
-  if (config?.voiceBackend === "copilot-local" && send.length && !localUtteranceOpen) {
-    localUtteranceOpen = true;
-    cancelLocalSpeech();
-    ws.send(JSON.stringify({ type: "interrupt" }));
+  if (config?.voiceBackend === "copilot-local") {
+    if (send.length && !localUtteranceOpen) {
+      localUtteranceOpen = true;
+      cancelLocalSpeech(); // confirmed speech evidence still gives local TTS responsive barge-in
+    }
+    if (localUtteranceOpen) {
+      const remaining = MAX_LOCAL_UTTERANCE_CHUNKS - localUtteranceChunks.length;
+      if (send.length > remaining) localUtteranceOverflow = true;
+      if (remaining > 0) localUtteranceChunks.push(...send.slice(0, remaining));
+    }
+    if (ended) {
+      const chunks = localUtteranceChunks;
+      const overflowed = localUtteranceOverflow;
+      resetLocalUtterance();
+      if (!overflowed) {
+        for (const chunk of chunks) ws.send(chunk);
+        if (chunks.length) ws.send(JSON.stringify({ type: "audio_end", evidence: utterance }));
+      }
+    }
+    return;
   }
   for (const chunk of send) ws.send(chunk);
   if (ended) {
-    localUtteranceOpen = false;
     ws.send(JSON.stringify({ type: "audio_end" }));
   }
 }
@@ -545,7 +568,11 @@ function onPlayerLevel(level, playing) {
 function setMuted(muted) {
   state.muted = muted;
   state.lastActivity = performance.now();
-  if (muted && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "audio_end" }));
+  if (muted) {
+    speechGate.reset();
+    resetLocalUtterance();
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "audio_end" }));
+  }
   if (muted) cancelLocalSpeech();
   syncMic();
   showBubble(muted ? t("pet.muted") : t("pet.unmuted"), "hint", 2500);
@@ -668,16 +695,32 @@ function onServerMessage(message) {
         if (!greeted) {
           greeted = true;
           showBubble(message.backend === "copilot-local" ? t("pet.greetLocal") : t("pet.greet"), "hint", 5000);
-        } else if (bubbleEl.classList.contains("error") || bubbleEl.classList.contains("hint")) {
+        } else if (bubbleEl.classList.contains("hint") ||
+            (bubbleEl.classList.contains("error") && performance.now() >= preserveBackendErrorUntil)) {
           hideBubble();
         }
       } else if (message.state === "error") {
         state.conn = "error";
-        showBubble(friendlyError(message.message), "error");
+        showBubble(friendlyError({
+          backend: message.backend ?? config?.voiceBackend,
+          code: message.code,
+          message: message.message,
+        }), "error");
       } else {
         state.conn = "connecting";
         if (message.message) showBubble(message.message, "hint");
       }
+      break;
+
+    case "error":
+      state.lastActivity = performance.now();
+      exchange.closed = true;
+      preserveBackendErrorUntil = message.recoverable ? performance.now() + 10_000 : 0;
+      showBubble(friendlyError({
+        backend: message.backend ?? config?.voiceBackend,
+        code: message.code,
+        message: message.message,
+      }), "error", message.recoverable ? 10_000 : 0);
       break;
 
     case "transcript":

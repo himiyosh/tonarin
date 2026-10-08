@@ -57,10 +57,9 @@ Audio stays on the computer. The previous Gemini Live path remains available for
 
 | Area | What you get |
 |---|---|
-| **Conversation** | Local speech recognition, GitHub Copilot replies, local system speech, barge-in and captions in Japanese and English. The legacy Gemini Live path remains available. |
+| **Conversation** | Local speech recognition, GitHub Copilot replies, local system speech, barge-in and captions in Japanese and English. Local candidates are transcribed before they can interrupt an active Copilot reply; common silence hallucinations are ignored. The legacy Gemini Live path remains available. |
 | **Copilot deep dives** | `ask_copilot` hands articles, comparisons, explanations and design questions to a sandboxed Copilot session. |
-| **News** | Keep the 12 Japanese/English tech feeds as defaults; opt into verified Japanese public-agency, Osaka public-life and GOV.UK/NSF English RSS sources, or add your own public feed. Publisher-restricted sources provide headlines/descriptions only; personal article reads check robots.txt and do not return paywalled text. |
-| **Mail (MOCK/DEMO)** | Off by default: try fictional Gmail-style and Outlook-style authorization, sender/subject notices and local read-aloud. No real sign-in, mailbox access or AI transfer. |
+| **News** | Uses the original 12 Japanese/English technology feeds for the active speech language. Publisher-restricted sources provide headlines and descriptions only. |
 | **Reminders and automations** | "Remind me in 20 minutes", a morning briefing, scheduled Copilot research, break nudges and keyword watch, with a history you can review. |
 | **Connected apps (MCP)** | Model Context Protocol servers become the pet's tools: your Mac's calendar (Google, iCloud, Exchange; macOS), Microsoft Learn, and GitHub (read-only, with **Sign in with GitHub**). |
 | **Noise filter** | Only voice-like sound is recognized, so typing, fans or a door do not start a conversation. Three levels. |
@@ -209,25 +208,18 @@ What the paid tier bills, and how Tonarin keeps it low:
 ## Configuration
 
 Everything a user needs is in the settings window (menu bar or notification-area icon, right-click → Settings, or
-<kbd>⌘</kbd> <kbd>,</kbd> on a Mac): general, character, conversation and voice, automations, connected apps, news,
-the mock mail prototype, connection, usage and cost. Settings are stored in `~/Library/Application Support/Tonarin/` on a Mac and in
+<kbd>⌘</kbd> <kbd>,</kbd> on a Mac): general, character, conversation and voice, automations, connected apps,
+connection, usage and cost. Settings are stored in `~/Library/Application Support/Tonarin/` on a Mac and in
 `%APPDATA%\Tonarin\` on Windows.
 
-**Settings → Mail (MOCK)** uses only scripted fictional messages. The body-view toggle and separate AI-transfer
-confirmation demonstrate consent without fetching real mail or generating an AI summary. See the
-[mock mail boundaries](docs/configuration.md#mail-prototype-mockdemo).
+News conversations and keyword watches use the language-specific original technology feeds. The app no longer
+offers source selection or personal-feed registration in Settings. Existing saved source preferences are retained
+on disk for compatibility but are not used.
 
-In **Settings → News**, switch topics or individual sources on and off, or add a public HTTPS site or RSS/Atom URL.
-The add form is near the top and shows how many of the 10 personal-site slots remain. Tonarin discovers advertised
-feeds; sites without one cannot be added. Headlines and keyword alerts check only the enabled sites; with all sites
-off, no feed is fetched and a scheduled keyword check records an error explaining how to turn sources back on.
-Your original news choices remain unchanged, and new built-in topics are opt-in. The original technology feeds and
-Osaka notices are **feed-only**: adding the same site yourself never unlocks their article text. For other personal
-sources, an article can be read only from
-the **exact host you entered** after a robots.txt check, without credentials or paywall bypass; a feed hosted
-elsewhere does not authorize its article hosts. Japanese general, industry and living notices have built-in
-options, while science currently has no eligible verified Japanese source and shows **候補なし**. See
-[news settings and source notes](docs/configuration.md#news-sources).
+The fictional mail prototype is not part of the normal settings UI. Developers can expose the offline-only mock
+with `TONARIN_ENABLE_MAIL_MOCK=1`; its IPC route is unavailable without that explicit gate. Real mail integration
+remains deferred until provider scopes, retention, notifications, write operations and AI-transfer consent are
+specified. See [Configuration](docs/configuration.md#mail-prototype-mockdemo).
 
 Environment variables for development and for the standalone proxy are listed in
 [docs/configuration.md](docs/configuration.md).

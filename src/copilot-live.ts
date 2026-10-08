@@ -42,10 +42,53 @@ export interface CopilotLiveConfig {
 
 type PetMessage =
   | { type: "hello"; key: string; options?: unknown }
-  | { type: "audio_end" }
+  | { type: "audio_end"; evidence?: LocalUtteranceEvidence }
   | { type: "interrupt" }
   | { type: "text"; text: string }
   | { type: "reset" };
+
+export interface LocalUtteranceEvidence {
+  durationMs: number;
+  voicedMs: number;
+  voiceRatio: number;
+  maxThresholdRatio: number;
+}
+
+function validEvidence(value: unknown): value is LocalUtteranceEvidence {
+  if (!value || typeof value !== "object") return false;
+  const evidence = value as Record<string, unknown>;
+  return ["durationMs", "voicedMs", "voiceRatio", "maxThresholdRatio"].every((key) =>
+    typeof evidence[key] === "number" && Number.isFinite(evidence[key]));
+}
+
+const normalizedTranscript = (text: string): string =>
+  text.normalize("NFKC").toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
+
+export function acceptLocalTranscript(text: string, evidence?: LocalUtteranceEvidence): boolean {
+  const normalized = normalizedTranscript(text);
+  if (!normalized || !/[\p{L}\p{N}]/u.test(normalized)) return false;
+  if (/^(♪+|♫+|音楽|music)$/.test(normalized)) {
+    const strong = evidence &&
+      evidence.voicedMs >= 320 &&
+      evidence.voiceRatio >= 0.12 &&
+      evidence.maxThresholdRatio >= 1.25;
+    return Boolean(strong);
+  }
+  return ![
+    "ご視聴ありがとうございました",
+    "ご覧いただきありがとうございました",
+    "字幕視聴ありがとうございました",
+    "thankyouforwatching",
+    "thanksforwatching",
+  ].includes(normalized);
+}
+
+export function copilotVoiceErrorCode(error: unknown): "copilot-timeout" | "copilot-unavailable" | "copilot-turn" {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/session\.idle|timeout after .*waiting for session\.idle/i.test(message)) return "copilot-timeout";
+  if (/signed in|license|authentication|unauthorized/i.test(message)) return "copilot-unavailable";
+  return "copilot-turn";
+}
 
 function toBuffer(data: RawData): Buffer {
   if (Buffer.isBuffer(data)) return data;
@@ -60,7 +103,9 @@ class CopilotVoiceConnection implements LiveSession {
   private closed = false;
   private audio: Buffer[] = [];
   private audioBytes = 0;
-  private generation = 0;
+  private promptGeneration = 0;
+  private transcriptionGeneration = 0;
+  private transcription: AbortController | undefined;
   private active: AbortController | undefined;
   private conversation: CopilotVoiceConversation | undefined;
   private readonly authTimer: NodeJS.Timeout;
@@ -121,7 +166,8 @@ class CopilotVoiceConnection implements LiveSession {
         const pcm = Buffer.concat(this.audio, this.audioBytes);
         this.audio = [];
         this.audioBytes = 0;
-        if (pcm.length) void this.runAudio(pcm);
+        const evidence = validEvidence(message.evidence) ? message.evidence : undefined;
+        if (pcm.length) void this.runAudio(pcm, evidence);
         break;
       }
       case "interrupt":
@@ -131,6 +177,7 @@ class CopilotVoiceConnection implements LiveSession {
         if (typeof message.text === "string" && message.text.trim()) void this.runText(message.text.trim().slice(0, 4000));
         break;
       case "reset":
+        this.cancelTranscription();
         await this.interrupt();
         await this.conversation?.disconnect().catch(() => {});
         this.conversation = undefined;
@@ -148,58 +195,90 @@ class CopilotVoiceConnection implements LiveSession {
       this.send({ type: "status", state: "ready", backend: "copilot-local" });
       this.config.onSessionReady?.(this);
     } catch (error) {
-      this.send({ type: "status", state: "error", backend: "copilot-local", message: error instanceof Error ? error.message : String(error) });
+      this.send({
+        type: "status",
+        state: "error",
+        backend: "copilot-local",
+        code: copilotVoiceErrorCode(error),
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  private async runAudio(pcm: Buffer): Promise<void> {
-    await this.interrupt(false);
-    const generation = ++this.generation;
+  private cancelTranscription(): void {
+    this.transcriptionGeneration++;
+    this.transcription?.abort();
+    this.transcription = undefined;
+  }
+
+  private async runAudio(pcm: Buffer, evidence?: LocalUtteranceEvidence): Promise<void> {
+    this.cancelTranscription();
+    const generation = this.transcriptionGeneration;
     const controller = new AbortController();
-    this.active = controller;
+    this.transcription = controller;
     this.send({ type: "tool", name: "local_transcription", phase: "start" });
+    let prompt = "";
     try {
       const text = await this.config.transcribe(pcm, this.options, controller.signal);
-      if (controller.signal.aborted || generation !== this.generation || !text) return;
+      if (controller.signal.aborted || generation !== this.transcriptionGeneration || !acceptLocalTranscript(text, evidence)) return;
+      const interrupted = await this.interrupt(false);
+      if (controller.signal.aborted || generation !== this.transcriptionGeneration) return;
+      if (interrupted) this.send({ type: "interrupted", backend: "copilot-local" });
       this.send({ type: "transcript", role: "user", text, phase: "final" });
-      await this.runPrompt(text, controller, generation);
+      prompt = text;
     } catch (error) {
       if (!controller.signal.aborted) {
-        this.send({ type: "status", state: "error", backend: "copilot-local", message: error instanceof Error ? error.message : String(error) });
+        this.send({
+          type: "error",
+          backend: "copilot-local",
+          code: "local-asr",
+          recoverable: true,
+          message: error instanceof Error ? error.message : String(error),
+        });
       }
     } finally {
       this.send({ type: "tool", name: "local_transcription", phase: "end" });
-      if (this.active === controller) this.active = undefined;
+      if (this.transcription === controller) this.transcription = undefined;
     }
+    if (prompt) await this.runPrompt(prompt);
   }
 
   private async runText(prompt: string): Promise<void> {
+    this.cancelTranscription();
     await this.interrupt(false);
     const controller = new AbortController();
-    const generation = ++this.generation;
+    const generation = ++this.promptGeneration;
     this.active = controller;
     await this.runPrompt(prompt, controller, generation);
   }
 
-  private async runPrompt(prompt: string, controller = new AbortController(), generation = ++this.generation): Promise<string> {
+  private async runPrompt(prompt: string, controller = new AbortController(), generation = ++this.promptGeneration): Promise<string> {
     if (!this.conversation || !this.ready) return "";
     this.active = controller;
     this.send({ type: "tool", name: "copilot_voice", phase: "start" });
     let streamed = "";
     try {
       const answer = await this.conversation.send(prompt, controller.signal, (delta) => {
-        if (controller.signal.aborted || generation !== this.generation || !delta) return;
+        if (controller.signal.aborted || generation !== this.promptGeneration || !delta) return;
         streamed += delta;
         this.send({ type: "transcript", role: "model", text: delta, phase: "partial" });
       });
-      if (controller.signal.aborted || generation !== this.generation) return "";
+      if (controller.signal.aborted || generation !== this.promptGeneration) return "";
       if (!streamed && answer) this.send({ type: "transcript", role: "model", text: answer, phase: "final" });
       else this.send({ type: "transcript", role: "model", text: "", phase: "final" });
       this.send({ type: "turn_complete", backend: "copilot-local" });
       return answer;
     } catch (error) {
       if (!controller.signal.aborted) {
-        this.send({ type: "status", state: "error", backend: "copilot-local", message: error instanceof Error ? error.message : String(error) });
+        const code = copilotVoiceErrorCode(error);
+        this.send({
+          type: "error",
+          backend: "copilot-local",
+          code,
+          recoverable: code !== "copilot-unavailable",
+          message: error instanceof Error ? error.message : String(error),
+        });
+        if (code === "copilot-timeout") await this.recoverConversation();
       }
       return "";
     } finally {
@@ -208,13 +287,23 @@ class CopilotVoiceConnection implements LiveSession {
     }
   }
 
-  private async interrupt(notify = true): Promise<void> {
-    this.generation++;
+  private async recoverConversation(): Promise<void> {
+    this.ready = false;
+    const conversation = this.conversation;
+    this.conversation = undefined;
+    await conversation?.abort().catch(() => {});
+    await conversation?.disconnect().catch(() => {});
+    if (!this.closed) await this.startConversation();
+  }
+
+  private async interrupt(notify = true): Promise<boolean> {
+    this.promptGeneration++;
     const active = this.active;
     this.active = undefined;
     active?.abort();
     if (active) await this.conversation?.abort().catch(() => {});
     if (notify) this.send({ type: "interrupted", backend: "copilot-local" });
+    return Boolean(active);
   }
 
   get isReady(): boolean {
@@ -232,6 +321,7 @@ class CopilotVoiceConnection implements LiveSession {
     if (this.closed) return;
     this.closed = true;
     clearTimeout(this.authTimer);
+    this.cancelTranscription();
     await this.interrupt(false);
     await this.conversation?.disconnect().catch(() => {});
     this.conversation = undefined;

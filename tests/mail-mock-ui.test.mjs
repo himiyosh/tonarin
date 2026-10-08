@@ -52,6 +52,7 @@ test("settings keeps the mock off, demonstrates finite notices/speech/consent, a
     proxy: { running: false, managed: false, status: null },
     pet: { conn: "ready", muted: false, sleeping: false },
     githubSignIn: false,
+    features: { mailMock: true },
     mailMock: controller.snapshot(),
   });
   const invoke = (method, ...args) => Promise.resolve().then(() => {
