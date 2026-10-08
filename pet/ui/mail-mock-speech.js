@@ -1,5 +1,5 @@
-export async function speakLocalMockMetadata(text, language, { synthesis = globalThis.speechSynthesis,
-  Utterance = globalThis.SpeechSynthesisUtterance, onError = () => {}, onEnd = () => {},
+export async function speakLocalText(text, language, { synthesis = globalThis.speechSynthesis,
+  Utterance = globalThis.SpeechSynthesisUtterance, onStart = () => {}, onError = () => {}, onEnd = () => {},
   signal, voiceWaitMs = 2000, startWaitMs = 2500 } = {}) {
   if (!synthesis || typeof synthesis.getVoices !== "function" || typeof synthesis.speak !== "function" ||
       typeof synthesis.cancel !== "function" || typeof Utterance !== "function") {
@@ -54,6 +54,7 @@ export async function speakLocalMockMetadata(text, language, { synthesis = globa
       settled = true;
       clearTimeout(timer);
       signal?.removeEventListener("abort", abort);
+      onStart();
       resolve();
     };
     utterance.onerror = (event) => {
@@ -81,3 +82,5 @@ export async function speakLocalMockMetadata(text, language, { synthesis = globa
     }
   });
 }
+
+export const speakLocalMockMetadata = speakLocalText;

@@ -224,7 +224,9 @@ function startProxy() {
     ...(IS_WINDOWS ? {} : { PATH: [process.env.PATH, "/opt/homebrew/bin", "/usr/local/bin"].filter(Boolean).join(":") }),
     PORT: String(PORT),
     PROXY_API_KEY: proxyKey(),
-    WHISPER: "off", // local speech recognition is only for the AIRI setup
+    VOICE_BACKEND: settings.values.voiceBackend,
+    WHISPER_MODEL: env("WHISPER_MODEL") || path.join(app.getPath("userData"), "models", "ggml-large-v3-turbo-q5_0.bin"),
+    WHISPER_LOG: path.join(logDir(), "whisper.log"),
     REMINDERS_FILE: path.join(app.getPath("userData"), "reminders.json"),
     AUTOMATIONS_FILE: path.join(app.getPath("userData"), "automations.json"),
     USAGE_FILE: path.join(app.getPath("userData"), "usage.json"), // token counts per day, no content
@@ -438,6 +440,15 @@ async function proxyRequest(method, pathname, body, timeoutMs = 8000) {
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : String(error) };
   }
+
+  async function probeProxyStatusOnce() {
+    const result = await proxyRequest("GET", "/status", undefined, 3000);
+    if (result.ok) {
+      proxyStatus = result.data;
+      broadcastSettings();
+    }
+    return proxyStatus;
+  }
 }
 
 let newsSync = Promise.resolve();
@@ -480,14 +491,16 @@ async function ensureProxy() {
   if (!BUNDLED_PROXY && (await portOpen(PORT))) {
     proxyRunning = true; // started outside the app (for example `npm start` while developing)
     await queueNewsSync().then(() => true, () => false); // error is logged and shown in the news settings
+    await probeProxyStatusOnce();
     void refreshProxyStatus();
     listenToProxyEvents();
     return;
   }
   if (BUNDLED_PROXY) PORT = await freePort();
   startProxy();
-  proxyRunning = await waitForPort(PORT, 20_000);
+  proxyRunning = await waitForPort(PORT, 45_000);
   if (proxyRunning) await queueNewsSync().then(() => true, () => false);
+  if (proxyRunning) await probeProxyStatusOnce();
   void refreshProxyStatus();
   listenToProxyEvents();
 }
@@ -500,7 +513,7 @@ async function restartProxy() {
   await child.stop();
   startProxy(); // same port: the pet keeps its address
 
-  proxyRunning = await waitForPort(PORT, 20_000);
+  proxyRunning = await waitForPort(PORT, 45_000);
   if (proxyRunning) await queueNewsSync().then(() => true, () => false);
   sendToPet("reconnect");
   broadcastSettings();
@@ -755,7 +768,13 @@ ipcMain.handle("pet:config", (event) => {
   if (!fromOurPages(event)) return undefined;
   const codexPets = pets.scan();
   console.log(`[pet] Codex pets found: ${codexPets.length}`);
-  return { wsUrl: `ws://127.0.0.1:${PORT}/v1/live`, key: proxyKey(), character: START_CHARACTER, codexPets };
+  return {
+    wsUrl: `ws://127.0.0.1:${PORT}/v1/live`,
+    key: proxyKey(),
+    voiceBackend: proxyStatus?.voiceBackend ?? "unavailable",
+    character: START_CHARACTER,
+    codexPets,
+  };
 });
 
 ipcMain.handle("pet:codex-pets", (event) => (fromOurPages(event) ? pets.scan() : []));
@@ -1132,6 +1151,7 @@ ipcMain.handle("settings:set", async (event, patch) => {
   const { proxyKey: _ignored, customFeeds: _newsSites, ...allowed } = patch; // sites go through verified discovery instead
   if (Object.hasOwn(allowed, "feeds") && !settings.isValid("feeds", allowed.feeds)) throw new Error("Invalid news source selection");
   const changed = settings.update(allowed);
+  if (changed.includes("voiceBackend")) await restartProxy();
   if (changed.includes("feeds")) await newsSync;
   else if (changed.some((key) => ["language", "speechLanguage"].includes(key))) await newsSync.then(() => true, () => false);
   return snapshot();
@@ -1641,7 +1661,7 @@ app.whenReady().then(async () => {
   createTray();
   await ensureProxy();
   createPetWindow();
-  if (geminiKeySource() === "none") openSettings("connection"); // first run: ask for the key
+  if (proxyStatus?.voiceBackend === "unavailable") openSettings("connection");
   if (SMOKE_TEST_FILE) void runSmokeTest();
 
   // A display was unplugged or rearranged: keep the pet on a screen, with room for its bubble.

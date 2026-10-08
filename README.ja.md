@@ -25,9 +25,9 @@ macOS と Windows のデスクトップに住む音声コンパニオンです�
 
 ---
 
-Tonarin は、デスクトップに住む小さなキャラクターです。となりの席の同僚に話しかけるように声をかけると、
-**Gemini Live** で 1 秒ほどで返事をします。記事の中身、設計の相談、コードの仕組みのように考える必要がある質問は、
-あなたがすでに使っている **GitHub Copilot** に聞いて、その答えを自分の言葉で話してくれます。
+Tonarin は、デスクトップに住む小さなキャラクターです。ローカルの whisper.cpp で声を文字にし、
+確定した文字だけを **GitHub Copilot** に送って、OS にインストール済みの声で返事を読み上げます。
+音声データは端末の外へ送りません。従来の Gemini Live 経路も互換用に残しています。
 
 ## 目次
 
@@ -57,13 +57,13 @@ Tonarin は、デスクトップに住む小さなキャラクターです。と
 
 | 分野 | できること |
 |---|---|
-| **会話** | Gemini Live でのリアルタイム音声会話、割り込み、双方の字幕、日本語と英語 (画面の言語と話す言語は別々に設定)。 |
+| **会話** | ローカル音声認識、GitHub Copilot の応答、端末内読み上げ、割り込み、双方の字幕、日本語と英語。従来の Gemini Live 経路も利用できます。 |
 | **Copilot で深掘り** | 記事の中身、比較、解説、設計の相談を `ask_copilot` で、隔離した Copilot セッションに任せます。 |
 | **ニュース** | 従来の日英テック系 12 フィードは標準のまま、日本語の行政・総合 2 件と、英語の総合・経済・科学・暮らし（健康）の確認済み公開 RSS/Atom を任意選択できます。公開フィードのある HTTPS サイトも登録でき、許可されたホストの記事を読みます。 |
 | **メール模擬 (MOCK/DEMO)** | 初期オフ。架空の Gmail 型・Outlook 型の認可、差出人・件名の通知、端末内の読み上げを試せます。実ログイン、実メール取得、AI 転送はありません。 |
 | **リマインダーと自動実行** | 「20 分後に教えて」、朝のまとめ、Copilot による定期調査、休憩の声かけ、キーワード通知。履歴も残ります。 |
 | **アプリ連携 (MCP)** | Model Context Protocol のサーバーがペットの道具になります。Mac のカレンダー (Google、iCloud、Exchange。macOS のみ)、Microsoft Learn、GitHub (読み取り専用、**GitHub でサインイン**)。 |
-| **雑音フィルター** | 声らしい音だけを Gemini に送るので、タイピングやファン、ドアの音で会話が始まりません。強さは 3 段階。 |
+| **雑音フィルター** | 声らしい音だけを認識するので、タイピングやファン、ドアの音で会話が始まりません。強さは 3 段階。 |
 | **使用量と料金** | 有料枠で何に料金がかかるか、今日の使用量、料金の目安を設定で確認できます。 |
 | **キャラクター** | オリジナルのキャラクター 8 体、大きさは 50〜200%、Codex / ChatGPT のペット (スプライトシート) にも対応。 |
 | **Mac らしさ** | メニューバーのアイコン、macOS 26 の Liquid Glass アイコン、画面ロックでおやすみ、吹き出しはペットの空いている側に表示。 |
@@ -76,8 +76,9 @@ Tonarin は、デスクトップに住む小さなキャラクターです。と
 | | |
 |---|---|
 | **パソコン** | Apple Silicon の Mac (macOS 26 で開発と動作確認をしています)、または Windows 10 / 11 の PC (x64 か ARM64、プレビュー)。 |
-| **Gemini API キー** | [Google AI Studio](https://aistudio.google.com/apikey) で無料で作れます。無料枠でも使えます ([料金](#料金)を参照)。 |
-| **GitHub Copilot** *(任意)* | どのプランでも可。[Copilot CLI](https://github.com/github/copilot-cli) で一度サインインするか、`COPILOT_GITHUB_TOKEN` を設定します。なくても会話はでき、深掘りだけが使えません。 |
+| **ローカル音声認識** | `whisper-server` とローカルモデル。セットアップは [設定リファレンス](docs/configuration.md#realtime-voice) を参照。 |
+| **GitHub Copilot** | どのプランでも可。[Copilot CLI](https://github.com/github/copilot-cli) で一度サインインするか、`COPILOT_GITHUB_TOKEN` を設定します。 |
+| **Gemini API キー** *(任意)* | ローカル音声認識を使わず、従来の Gemini Live 経路を使う場合だけ必要です。 |
 | **Node.js** | 22.12 以上 (ソースからビルドする場合だけ)。 |
 
 ### ダウンロード
@@ -87,7 +88,7 @@ Tonarin は、デスクトップに住む小さなキャラクターです。と
 `Tonarin-<version>-mac-arm64.dmg` (または `.zip`)、Windows 用は `Tonarin-<version>-win-x64-setup.exe` か
 `-win-arm64-setup.exe` です。各リリースの `SHA256SUMS.txt` に SHA-256 のチェックサムがあります。
 
-初回起動時は「設定」の「接続」が開きます。Gemini API キーを貼り付けると、ペットが起きます。
+初回起動時は「設定」の「接続」が開きます。ローカル音声認識を準備すると Gemini なしで起動できます。
 
 > [!NOTE]
 > アプリはまだ Apple の公証も Windows のコード署名も受けていないため、最初の一度だけ確認が出ます。
@@ -143,26 +144,31 @@ flowchart LR
     Proxy["ローカルのプロキシ<br/>127.0.0.1 のみ"]
     MCP["MCP サーバー<br/>カレンダー · Learn · GitHub"]
   end
-  Gemini["Gemini Live API"]
+  ASR["whisper.cpp<br/>(端末内)"]
+  Voice["OS のローカル音声"]
+  Gemini["Gemini Live API<br/>(従来の任意経路)"]
   Copilot["GitHub Copilot<br/>(Copilot SDK)"]
   Feeds["RSS フィード<br/>(許可リスト)"]
 
   Pet <-- "WebSocket /v1/live<br/>PCM 音声 + イベント" --> Proxy
   Main -- "起動と設定" --> Proxy
-  Proxy <-- "双方向ストリーム" --> Gemini
-  Proxy -- "ask_copilot<br/>自動実行" --> Copilot
+  Proxy <-- "ローカル音声認識" --> ASR
+  Pet <-- "端末内読み上げ" --> Voice
+  Proxy -- "確定した文字<br/>自動実行" --> Copilot
+  Proxy -. "任意の互換経路" .-> Gemini
   Proxy -- "list_headlines<br/>read_article" --> Feeds
   Proxy -- "mcp_* ツール" --> MCP
 ```
 
 - **ペットのウィンドウ** (`pet/ui/`): マイクの取り込み、[雑音フィルター](pet/ui/speech-gate.js)、音声の再生、キャラクターと吹き出しの表示。
 - **メインプロセス** (`pet/main.cjs`): 設定、安全な保管場所、メニューバーや通知領域のアイコン、ウィンドウの配置、GitHub でサインイン、同梱プロキシの起動と停止。
-- **プロキシ** (`src/`): Gemini Live との音声の中継、ツール (ニュース、リマインダー、自動実行、MCP) の実行、深掘り用の Copilot セッション。
+- **プロキシ** (`src/`): ローカル音声認識と Copilot 会話の調整、ツール (ニュース、リマインダー、自動実行、MCP) の実行、従来の Gemini Live 経路。
   OpenAI 互換のエンドポイントでもあり、プロジェクトはここから始まりました ([設定リファレンス](docs/configuration.md#openai-compatible-endpoint)を参照)。
 
 ## プライバシーとセキュリティ
 
-- **キーは手元だけに。** Gemini のキー、MCP のトークン、GitHub のサインインは Electron の `safeStorage` (macOS のキーチェーン、Windows では DPAPI) で暗号化して保存し、画面側には渡しません。
+- **ローカル経路の音声は外へ送りません。** whisper.cpp が端末内で認識し、確定した文字と会話コンテキストだけを GitHub Copilot に送ります。読み上げも OS のローカル音声です。
+- **キーは手元だけに。** 任意の Gemini キー、MCP のトークン、GitHub のサインインは Electron の `safeStorage` (macOS のキーチェーン、Windows では DPAPI) で暗号化して保存し、画面側には渡しません。
 - **ローカル専用のプロキシ。** `127.0.0.1` だけで待ち受け、Bearer キーが必要で、Web ページからの WebSocket 接続は拒否します。
 - **Copilot は隔離。** 使えるのは Tonarin の読み取り専用ツールだけです。シェル、ファイル編集、URL 取得などの組み込みツールは無効、作業フォルダは空の一時フォルダ、Copilot Memory はオフです。
 - **外から来た内容はデータとして扱う。** ニュース記事と MCP の結果は「指示ではなくデータ」と明示し、長さを制限します。記事は許可したホストからしか取得しません。
@@ -171,7 +177,7 @@ flowchart LR
 - **GitHub でサインイン** は OAuth のデバイスフローで、公開用の Client ID だけを使い、client secret はありません。トークンは 8 時間で切れ、自動で更新します。アクセスは読み取り専用です。
 
 > [!IMPORTANT]
-> Gemini の**無料枠**では、送った内容が Google の製品改善に使われ、人間のレビュアーが読む場合があります。
+> 従来の Gemini 経路を選ぶ場合、Gemini の**無料枠**では、送った内容が Google の製品改善に使われ、人間のレビュアーが読む場合があります。
 > 会話やつないだアプリに機密情報や個人情報を含めないか、有料枠を使ってください。
 
 脆弱性の報告は [SECURITY.md](SECURITY.md) を参照してください。

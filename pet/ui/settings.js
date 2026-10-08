@@ -868,6 +868,7 @@ function sectionMailMock() {
 function sectionConnection() {
   const status = el("span", { class: "pill" });
   const onboarding = el("div", { class: "notice warn", text: t("connection.onboarding") });
+  const localVoiceStatus = el("span", { class: "pill" });
   const keyInput = el("input", { type: "password", class: "key", placeholder: t("connection.keyPlaceholder"), autocomplete: "off", spellcheck: false });
   const message = el("div", { class: "message" });
   const removeButton = el("button", {
@@ -885,10 +886,13 @@ function sectionConnection() {
   };
   sync(() => {
     const source = snap.gemini.source;
+    const localReady = snap.proxy.status?.voiceBackend === "copilot-local" && snap.proxy.status?.localSpeechRecognition;
     status.className = `pill ${source === "none" ? "off" : source === "env" ? "warn" : "ok"}`;
     status.textContent =
       source === "keychain" ? t("connection.statusKeychain") : source === "env" ? t("connection.statusEnv") : t("connection.statusNone");
-    onboarding.hidden = source !== "none";
+    localVoiceStatus.className = `pill ${localReady ? "ok" : "off"}`;
+    localVoiceStatus.textContent = t(localReady ? "connection.localVoiceReady" : "connection.localVoiceUnavailable");
+    onboarding.hidden = localReady || source !== "none";
     removeButton.hidden = source !== "keychain";
   });
 
@@ -935,6 +939,21 @@ function sectionConnection() {
   return [
     el("h1", { text: t("connection.title") }),
     onboarding,
+    el("h2", { text: t("connection.localVoice") }),
+    el(
+      "div",
+      { class: "group" },
+      row(
+        t("connection.voiceBackend"),
+        t("connection.voiceBackendDesc"),
+        select("voiceBackend", [
+          ["auto", t("connection.voiceBackendAuto")],
+          ["local", t("connection.voiceBackendLocal")],
+          ["gemini", t("connection.voiceBackendGemini")],
+        ]),
+      ),
+      row(t("connection.localVoice"), t("connection.localVoiceDesc"), localVoiceStatus),
+    ),
     el("h2", { text: t("connection.gemini") }),
     el(
       "div",
@@ -1969,12 +1988,16 @@ function renderUsage() {
   if (!usageRefs.today) return;
   const days = usageData?.days ?? [];
   const today = days[0]?.date === localDate(new Date()) ? days[0] : null;
+  const localVoice = usageData?.voiceBackend === "copilot-local";
   usageRefs.notice.hidden = Boolean(usageData);
+  usageRefs.local.hidden = !localVoice;
   if (!today) {
     usageRefs.today.replaceChildren(el("div", { class: "empty", text: usageData ? t("usage.noneToday") : t("usage.proxyDown") }));
   } else {
     const estimate = today.estimate;
-    usageRefs.today.replaceChildren(
+    usageRefs.today.replaceChildren(...(localVoice ? [
+      usageRow(t("usage.copilot"), t("usage.times", { n: formatCount(today.copilotRequests) })),
+    ] : [
       usageRow(t("usage.turns"), t("usage.times", { n: formatCount(today.turns) })),
       usageRow(t("usage.inputAudio"), t("usage.tokens", { n: formatCount(today.inputAudio) })),
       usageRow(t("usage.inputText"), t("usage.tokens", { n: formatCount(today.inputText + today.inputOther) })),
@@ -1988,7 +2011,7 @@ function renderUsage() {
         el("div", { class: "label" }, el("div", { class: "title", text: t("usage.estimate") }), el("div", { class: "desc", text: t("usage.estimateDesc") })),
         el("div", { class: "control value", text: t("usage.range", { low: formatUsd(estimate.turns), high: formatUsd(estimate.total) }) }),
       ),
-    );
+    ]));
   }
   const recent = days.slice(0, 7);
   usageRefs.days.replaceChildren(
@@ -1998,15 +2021,17 @@ function renderUsage() {
             "div",
             { class: "row usage-day" },
             el("span", { class: "usage-date", text: formatDay(day.date) }),
-            el("span", { text: t("usage.times", { n: formatCount(day.turns) }) }),
-            el("span", { text: t("usage.minutes", { n: formatCount(Math.round(day.listeningSeconds / 60)) }) }),
-            el("span", { class: "value", text: t("usage.range", { low: formatUsd(day.estimate.turns), high: formatUsd(day.estimate.total) }) }),
+            el("span", { text: t("usage.times", { n: formatCount(localVoice ? day.copilotRequests : day.turns) }) }),
+            ...(localVoice ? [] : [
+              el("span", { text: t("usage.minutes", { n: formatCount(Math.round(day.listeningSeconds / 60)) }) }),
+              el("span", { class: "value", text: t("usage.range", { low: formatUsd(day.estimate.turns), high: formatUsd(day.estimate.total) }) }),
+            ]),
           ),
         )
       : [el("div", { class: "empty", text: usageData ? t("usage.noneYet") : t("usage.proxyDown") })]),
   );
   const prices = usageData?.prices;
-  usageRefs.prices.textContent = prices
+  usageRefs.prices.textContent = !localVoice && prices
     ? t("usage.prices", {
         model: prices.model,
         date: prices.checked,
@@ -2028,6 +2053,7 @@ function formatDay(date) {
 function sectionUsage() {
   usageRefs = {
     notice: el("div", { class: "notice warn", text: t("usage.proxyDown"), hidden: true }),
+    local: el("div", { class: "notice info", text: t("usage.localVoice"), hidden: true }),
     today: el("div", { class: "group" }),
     days: el("div", { class: "group" }),
     prices: el("p", { class: "lead small" }),
@@ -2058,11 +2084,20 @@ function sectionUsage() {
         el("p", { text: t(`usage.billed.${key}Desc`) })));
   };
   const link = (key, target) => el("button", { class: "link", type: "button", text: t(key), onclick: () => api.open(target) });
+  const geminiLinks = el("div", { class: "actions spaced" },
+    link("usage.linkUsage", "ai-studio-usage"),
+    link("usage.linkSpend", "ai-studio-spend"),
+    link("usage.linkPricing", "gemini-pricing"),
+    link("usage.linkLive", "live-billing"));
+  sync(() => {
+    geminiLinks.hidden = snap.proxy.status?.voiceBackend === "copilot-local";
+  });
   queueMicrotask(() => void loadUsage());
   return [
     el("h1", { text: t("usage.title") }),
     el("p", { class: "lead", text: t("usage.lead") }),
     usageRefs.notice,
+    usageRefs.local,
     el("h2", { text: t("usage.now") }),
     el("div", { class: "usage-now" }, el("div", { class: "usage-explainer-head" }, stateTitle, stateStatus), stateDesc),
     el("h2", { id: "usage-billed-heading", text: t("usage.billed") }),
@@ -2081,7 +2116,7 @@ function sectionUsage() {
     el("h2", { text: t("usage.recent") }),
     usageRefs.days,
     usageRefs.prices,
-    el("div", { class: "actions spaced" }, link("usage.linkUsage", "ai-studio-usage"), link("usage.linkSpend", "ai-studio-spend"), link("usage.linkPricing", "gemini-pricing"), link("usage.linkLive", "live-billing")),
+    geminiLinks,
     el("h2", { text: t("usage.tips") }),
     el("div", { class: "group" }, el("ul", { class: "plain" }, ["usage.tip1", "usage.tip2", "usage.tip3", "usage.tip4"].map((key) => el("li", { text: t(key) })))),
   ];

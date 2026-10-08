@@ -8,7 +8,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, openSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { delimiter, join } from "node:path";
+import { connect } from "node:net";
+import { delimiter, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PROJECT_ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -16,6 +17,7 @@ const MODEL_PATH = process.env.WHISPER_MODEL ?? join(PROJECT_ROOT, "models", "gg
 const PORT = Number(process.env.WHISPER_PORT ?? 8788);
 const LANGUAGE = process.env.WHISPER_LANGUAGE ?? "ja";
 const THREADS = process.env.WHISPER_THREADS ?? "4";
+const LOG_PATH = process.env.WHISPER_LOG ?? join(PROJECT_ROOT, "logs", "whisper.log");
 // Initial prompt that biases recognition toward the vocabulary of tech-news conversations.
 const PROMPT = process.env.WHISPER_PROMPT ?? "AI、GitHub Copilot、OpenAI、Google、Microsoft などのテック系ニュースについての会話です。";
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // same limit as the OpenAI API
@@ -24,7 +26,8 @@ let child: ChildProcess | undefined;
 
 function findBinary(name: string): string | undefined {
   const dirs = [...(process.env.PATH ?? "").split(delimiter), "/opt/homebrew/bin", "/usr/local/bin"];
-  return dirs.map((dir) => join(dir, name)).find((candidate) => existsSync(candidate));
+  const names = process.platform === "win32" && !extname(name) ? [name, `${name}.exe`] : [name];
+  return dirs.flatMap((dir) => names.map((candidate) => join(dir, candidate))).find((candidate) => existsSync(candidate));
 }
 
 /** Starts whisper-server if the binary and model are present. Returns a status line for the startup log. */
@@ -35,15 +38,19 @@ export function startWhisper(): string {
   if (!binary) return "unavailable (install with `brew install whisper-cpp`)";
   if (!existsSync(MODEL_PATH)) return `unavailable (model not found: ${MODEL_PATH})`;
 
-  mkdirSync(join(PROJECT_ROOT, "logs"), { recursive: true });
-  const log = openSync(join(PROJECT_ROOT, "logs", "whisper.log"), "a");
+  mkdirSync(dirname(LOG_PATH), { recursive: true });
+  const log = openSync(LOG_PATH, "a");
   child = spawn(
     binary,
     ["-m", MODEL_PATH, "--host", "127.0.0.1", "--port", String(PORT), "-l", LANGUAGE, "-t", THREADS, "-nt", "--prompt", PROMPT],
     { stdio: ["ignore", log, log] },
   );
   child.on("exit", (code, signal) => {
-    if (child) console.error(`[whisper] exited (code=${code}, signal=${signal}); see logs/whisper.log`);
+    if (child) console.error(`[whisper] exited (code=${code}, signal=${signal}); see ${LOG_PATH}`);
+    child = undefined;
+  });
+  child.on("error", (error) => {
+    console.error(`[whisper] could not start: ${error.message}; see ${LOG_PATH}`);
     child = undefined;
   });
   return `POST /v1/audio/transcriptions (whisper.cpp on 127.0.0.1:${PORT}, language=${LANGUAGE})`;
@@ -56,6 +63,67 @@ export function stopWhisper(): void {
 }
 
 export const whisperRunning = (): boolean => child !== undefined;
+
+export async function waitForWhisperReady(timeoutMs = 10_000): Promise<boolean> {
+  const until = Date.now() + timeoutMs;
+  while (child && Date.now() < until) {
+    const ready = await new Promise<boolean>((resolve) => {
+      const socket = connect(PORT, "127.0.0.1");
+      socket.once("connect", () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.once("error", () => resolve(false));
+    });
+    if (ready) return true;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
+}
+
+function pcm16Wav(pcm: Buffer, sampleRate = 16_000): Buffer {
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write("WAVE", 8);
+  header.write("fmt ", 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
+}
+
+/** Transcribes one complete 16 kHz mono PCM utterance with the local whisper.cpp server. */
+export async function transcribePcm(pcm: Buffer, language: string, signal?: AbortSignal): Promise<string> {
+  if (!child) throw new Error("Local speech recognition is not running");
+  if (!pcm.length) return "";
+  if (pcm.length > MAX_UPLOAD_BYTES) throw new Error("Audio upload too large");
+
+  const form = new FormData();
+  const wav = Uint8Array.from(pcm16Wav(pcm));
+  form.set("file", new Blob([wav.buffer], { type: "audio/wav" }), "utterance.wav");
+  form.set("language", language === "en" ? "en" : "ja");
+  form.set("response_format", "json");
+  const upstream = await fetch(`http://127.0.0.1:${PORT}/inference`, {
+    method: "POST",
+    body: form,
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000),
+  });
+  const raw = await upstream.text();
+  if (!upstream.ok) throw new Error(`Local speech recognition failed (HTTP ${upstream.status})`);
+  try {
+    const payload = JSON.parse(raw) as { text?: unknown };
+    return typeof payload.text === "string" ? payload.text.trim() : "";
+  } catch {
+    return raw.trim();
+  }
+}
 
 /** Reads the part headers of a multipart upload (filename, content type). Never the audio itself. */
 function describeUpload(body: Buffer): string {
