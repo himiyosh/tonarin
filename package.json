@@ -51,7 +51,7 @@
     "robots-parser": "^3.0.1",
     "rss-parser": "^3.13.0",
     "ws": "^8.22.0",
-    "zod": "^4.3.6"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/node": "^22.20.4",
